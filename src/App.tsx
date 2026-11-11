@@ -1,14 +1,100 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginCard } from './components/auth/LoginCard';
 import { AppLayout } from './components/layout/AppLayout';
 import { WelcomeDashboard } from './components/dashboard/WelcomeDashboard';
+import { KanbanBoard } from './components/kanban/KanbanBoard';
+import { LeadModal } from './components/leads/LeadModal';
+import { NewLeadModal } from './components/leads/NewLeadModal';
+import { EmpreendimentosManager } from './components/empreendimentos/EmpreendimentosManager';
+import { Lead, FunnelStage } from './types';
+import { leadsService } from './services/leadsService';
+import { Empreendimento, empreendimentosService } from './services/empreendimentosService';
 
 const AppContent: React.FC = () => {
-  const { user, isLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'agenda' | 'whatsapp'>('dashboard');
+  const { user, isLoading: authLoading } = useAuth();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'empreendimentos' | 'agenda' | 'whatsapp'>('kanban');
 
-  if (isLoading) {
+  // Leads state
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [isLeadsLoading, setIsLeadsLoading] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
+
+  // Empreendimentos state
+  const [empreendimentos, setEmpreendimentos] = useState<Empreendimento[]>([]);
+
+  // Load leads and developments
+  const loadData = async () => {
+    setIsLeadsLoading(true);
+    try {
+      const [leadsData, empsData] = await Promise.all([
+        leadsService.getLeads(),
+        empreendimentosService.getEmpreendimentos()
+      ]);
+      setLeads(leadsData);
+      setEmpreendimentos(empsData);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+    } finally {
+      setIsLeadsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
+
+  // Lead actions
+  const handleMoveLead = async (leadId: string, newStatus: FunnelStage) => {
+    // Optimistic UI update
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, statusFunil: newStatus } : l));
+    try {
+      await leadsService.updateLeadStatus(leadId, newStatus);
+    } catch (err) {
+      console.error('Failed to update lead status:', err);
+      // Rollback
+      loadData();
+    }
+  };
+
+  const handleSaveLead = async (updated: Partial<Lead>) => {
+    if (!selectedLead) return;
+    try {
+      await leadsService.updateLead(selectedLead.id, updated);
+      await loadData();
+      setSelectedLead(null);
+    } catch (err) {
+      console.error('Failed to save lead:', err);
+      throw err;
+    }
+  };
+
+  const handleDeleteLead = async (leadId: string) => {
+    try {
+      await leadsService.deleteLead(leadId);
+      await loadData();
+      setSelectedLead(null);
+    } catch (err) {
+      console.error('Failed to delete lead:', err);
+      throw err;
+    }
+  };
+
+  const handleCreateLead = async (newLead: Partial<Lead>) => {
+    try {
+      await leadsService.createLead(newLead);
+      await loadData();
+      setIsNewLeadModalOpen(false);
+    } catch (err) {
+      console.error('Failed to create lead:', err);
+      throw err;
+    }
+  };
+
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
         <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center mb-3">
@@ -30,6 +116,8 @@ const AppContent: React.FC = () => {
   // Authenticated: Show CRM Layout
   return (
     <AppLayout activeTab={activeTab} onTabChange={(tab: any) => setActiveTab(tab)}>
+      
+      {/* 1. VISÃO GERAL DASHBOARD */}
       {activeTab === 'dashboard' && (
         <WelcomeDashboard 
           onGoToKanban={() => setActiveTab('kanban')}
@@ -38,46 +126,48 @@ const AppContent: React.FC = () => {
         />
       )}
 
+      {/* 2. FUNIL KANBAN DE VENDAS */}
       {activeTab === 'kanban' && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-          <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-100 text-brand-600 flex items-center justify-center text-2xl font-bold">
-              📊
-            </div>
-            <h3 className="text-lg font-bold text-slate-900">Módulo do Funil Kanban</h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              A fundação e a tela de login (Sprint 1) estão prontas. Este módulo será completamente estruturado com drag-and-drop na <strong>Sprint 2</strong>!
-            </p>
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold hover:bg-brand-600 transition-colors cursor-pointer"
-            >
-              Voltar à Visão Geral
-            </button>
-          </div>
-        </div>
+        <KanbanBoard
+          leads={leads}
+          isLoading={isLeadsLoading}
+          onRefresh={loadData}
+          onSelectLead={(lead) => setSelectedLead(lead)}
+          onNewLead={() => setIsNewLeadModalOpen(true)}
+          onMoveLead={handleMoveLead}
+        />
       )}
 
+      {/* 3. CATÁLOGO E GESTÃO DE EMPREENDIMENTOS */}
+      {activeTab === 'empreendimentos' && (
+        <EmpreendimentosManager
+          empreendimentos={empreendimentos}
+          onRefresh={loadData}
+        />
+      )}
+
+      {/* 4. AGENDA DE VISITAS (Sprint 4) */}
       {activeTab === 'agenda' && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
           <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
             <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center text-2xl font-bold">
               📅
             </div>
-            <h3 className="text-lg font-bold text-slate-900">Módulo de Agenda de Visitas</h3>
+            <h3 className="text-lg font-bold text-slate-900">Agenda de Visitas dos Corretores</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Controle de visitas, integração Google Calendar e Apple Calendar programado para a <strong>Sprint 4</strong>.
+              Módulo de agendamento de visitas com integração com Google Agenda e iCloud programado para a <strong>Sprint 4</strong>.
             </p>
             <button
-              onClick={() => setActiveTab('dashboard')}
+              onClick={() => setActiveTab('kanban')}
               className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold hover:bg-brand-600 transition-colors cursor-pointer"
             >
-              Voltar à Visão Geral
+              Ir para o Funil Kanban
             </button>
           </div>
         </div>
       )}
 
+      {/* 5. WHATSAPP INBOX (Sprint 5) */}
       {activeTab === 'whatsapp' && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
           <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
@@ -86,17 +176,38 @@ const AppContent: React.FC = () => {
             </div>
             <h3 className="text-lg font-bold text-slate-900">Conexão WhatsApp & Inbox Espelhada</h3>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Emparelhamento via QR Code e Inbox de conversas programado para a <strong>Sprint 5</strong>.
+              Emparelhamento de WhatsApp via QR Code e Inbox espelhada de conversas programado para a <strong>Sprint 5</strong>.
             </p>
             <button
-              onClick={() => setActiveTab('dashboard')}
+              onClick={() => setActiveTab('kanban')}
               className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold hover:bg-brand-600 transition-colors cursor-pointer"
             >
-              Voltar à Visão Geral
+              Ir para o Funil Kanban
             </button>
           </div>
         </div>
       )}
+
+      {/* Lead Detail Modal */}
+      {selectedLead && (
+        <LeadModal
+          lead={selectedLead}
+          empreendimentos={empreendimentos}
+          onClose={() => setSelectedLead(null)}
+          onSave={handleSaveLead}
+          onDelete={handleDeleteLead}
+        />
+      )}
+
+      {/* New Lead Modal */}
+      {isNewLeadModalOpen && (
+        <NewLeadModal
+          empreendimentos={empreendimentos}
+          onClose={() => setIsNewLeadModalOpen(false)}
+          onCreate={handleCreateLead}
+        />
+      )}
+
     </AppLayout>
   );
 };

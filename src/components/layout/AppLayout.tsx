@@ -5,6 +5,7 @@ import {
   Columns3, 
   CalendarDays, 
   MessageSquare, 
+  Building2,
   LogOut, 
   Smartphone, 
   Bell,
@@ -33,7 +34,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
           <div className="flex items-center gap-3">
             <button 
               onClick={() => onTabChange('kanban')} 
-              className="flex items-center gap-2 focus:outline-none"
+              className="flex items-center gap-2 focus:outline-none cursor-pointer"
             >
               <img 
                 src="/logo-dark.png" 
@@ -50,7 +51,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
           <nav className="hidden md:flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 text-xs font-medium">
             <button
               onClick={() => onTabChange('kanban')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeTab === 'kanban'
                   ? 'bg-white text-brand-600 shadow-xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -61,8 +62,20 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
             </button>
 
             <button
+              onClick={() => onTabChange('empreendimentos')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                activeTab === 'empreendimentos'
+                  ? 'bg-white text-brand-600 shadow-xs font-semibold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Empreendimentos</span>
+            </button>
+
+            <button
               onClick={() => onTabChange('agenda')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeTab === 'agenda'
                   ? 'bg-white text-brand-600 shadow-xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -74,7 +87,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
 
             <button
               onClick={() => onTabChange('whatsapp')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeTab === 'whatsapp'
                   ? 'bg-white text-brand-600 shadow-xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -86,7 +99,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
 
             <button
               onClick={() => onTabChange('dashboard')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                 activeTab === 'dashboard'
                   ? 'bg-white text-brand-600 shadow-xs font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -111,7 +124,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
             </div>
 
             {/* Notification Bell */}
-            <button className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors relative">
+            <button className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors relative cursor-pointer">
               <Bell className="w-4 h-4" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full" />
             </button>
@@ -142,7 +155,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
             {/* Mobile menu toggle */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-slate-500 hover:text-slate-700 rounded-lg"
+              className="md:hidden p-2 text-slate-500 hover:text-slate-700 rounded-lg cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -161,6 +174,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
             >
               <Columns3 className="w-4 h-4" />
               <span>Funil Kanban</span>
+            </button>
+
+            <button
+              onClick={() => { onTabChange('empreendimentos'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold ${
+                activeTab === 'empreendimentos' ? 'bg-orange-50 text-brand-600' : 'text-slate-700'
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              <span>Empreendimentos</span>
             </button>
 
             <button

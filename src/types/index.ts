@@ -45,7 +45,7 @@ export interface Lead {
   fgtsAprovado: boolean;
   empreendimentoInteresse: string;
   statusFunil: FunnelStage;
-  origemLead: 'zap' | 'vivareal' | 'meta' | 'google' | 'indicacao' | 'outro';
+  origemLead: 'zap' | 'vivareal' | 'meta' | 'google' | 'indicacao' | 'whatsapp' | 'outro';
   motivoDescarte?: string;
   observacoes?: string;
   createdAt: string;
