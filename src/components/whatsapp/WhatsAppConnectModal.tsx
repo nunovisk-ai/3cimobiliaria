@@ -3,7 +3,6 @@ import { WhatsAppInstance } from '../../types';
 import { whatsappService } from '../../services/whatsappService';
 import { 
   X, 
-  Smartphone, 
   CheckCircle2, 
   RotateCw, 
   QrCode, 
@@ -13,6 +12,7 @@ import {
   ShieldCheck,
   HelpCircle
 } from 'lucide-react';
+import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 
 interface WhatsAppConnectModalProps {
   instance: WhatsAppInstance | null;
@@ -86,7 +86,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
         <div className="px-6 py-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center backdrop-blur-md">
-              <Smartphone className="w-5 h-5 text-emerald-100" />
+              <WhatsAppIcon className="w-5 h-5 text-white" />
             </div>
             <div>
               <h3 className="text-base font-bold">Conexão WhatsApp Web (Multi-Corretor)</h3>

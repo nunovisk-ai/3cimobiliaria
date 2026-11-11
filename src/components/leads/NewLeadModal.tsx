@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lead, FunnelStage } from '../../types';
 import { Empreendimento } from '../../services/empreendimentosService';
 import { X, UserPlus } from 'lucide-react';
+import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
 
 interface NewLeadModalProps {
   empreendimentos: Empreendimento[];
@@ -27,11 +28,18 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   const [origemLead, setOrigemLead] = useState<'whatsapp' | 'zap' | 'meta' | 'google' | 'indicacao'>('whatsapp');
   const [observacoes, setObservacoes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cpfError, setCpfError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome.trim() || !telefone.trim()) {
       alert('Nome e telefone são obrigatórios.');
+      return;
+    }
+
+    if (cpf && !isValidCPF(cpf)) {
+      setCpfError('CPF inválido. Verifique os dígitos ou deixe em branco.');
+      alert('O CPF informado é inválido. Por favor, verifique os dígitos ou deixe o campo em branco (opcional).');
       return;
     }
 
@@ -123,14 +131,44 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">CPF</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block font-semibold text-slate-700">CPF</label>
+              <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
+            </div>
             <input
               type="text"
+              maxLength={14}
               value={cpf}
-              onChange={(e) => setCpf(e.target.value)}
+              onChange={(e) => {
+                const masked = formatCPF(e.target.value);
+                setCpf(masked);
+                if (masked && masked.replace(/\D/g, '').length === 11) {
+                  if (!isValidCPF(masked)) {
+                    setCpfError('CPF inválido. Verifique os dígitos.');
+                  } else {
+                    setCpfError(null);
+                  }
+                } else {
+                  setCpfError(null);
+                }
+              }}
+              onBlur={() => {
+                if (cpf && !isValidCPF(cpf)) {
+                  setCpfError('CPF inválido. Verifique os dígitos.');
+                } else {
+                  setCpfError(null);
+                }
+              }}
               placeholder="000.000.000-00"
-              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className={`w-full p-2.5 bg-slate-50 border rounded-xl focus:bg-white focus:outline-none transition-all ${
+                cpfError 
+                  ? 'border-rose-400 focus:ring-2 focus:ring-rose-500/20 text-rose-900 bg-rose-50/30' 
+                  : 'border-slate-200 focus:ring-2 focus:ring-brand-500/20'
+              }`}
             />
+            {cpfError && (
+              <p className="text-[11px] text-rose-600 mt-1 font-medium">{cpfError}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

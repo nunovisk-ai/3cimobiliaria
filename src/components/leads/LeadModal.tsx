@@ -4,7 +4,6 @@ import { Empreendimento } from '../../services/empreendimentosService';
 import { LeadChecklistSection } from './LeadChecklistSection';
 import { 
   X, 
-  MessageSquare, 
   Calculator, 
   Trash2, 
   Save,
@@ -14,6 +13,8 @@ import {
   UserX,
   RotateCcw
 } from 'lucide-react';
+import { WhatsAppIcon } from '../icons/WhatsAppIcon';
+import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
 
 interface LeadModalProps {
   lead: Lead;
@@ -54,6 +55,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cpfError, setCpfError] = useState<string | null>(null);
 
   // Financial simulation calculations (Caixa / MCMV standards)
   const renda = Number(formData.rendaMensal) || 0;
@@ -64,6 +66,12 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.cpf && !isValidCPF(formData.cpf)) {
+      setCpfError('CPF inválido. Verifique os 11 dígitos ou deixe em branco.');
+      alert('O CPF informado é inválido. Por favor, verifique os dígitos ou deixe o campo em branco (opcional).');
+      return;
+    }
+
     setIsSaving(true);
     try {
       await onSave({
@@ -203,7 +211,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
               }}
               className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
-              <MessageSquare className="w-3.5 h-3.5" />
+              <WhatsAppIcon className="w-3.5 h-3.5" />
               <span>Chat WhatsApp</span>
             </button>
 
@@ -333,14 +341,44 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">CPF</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-semibold text-slate-700">CPF</label>
+                    <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
+                  </div>
                   <input
                     type="text"
+                    maxLength={14}
                     value={formData.cpf}
-                    onChange={(e) => setFormData({ ...formData, cpf: e.target.value })}
+                    onChange={(e) => {
+                      const masked = formatCPF(e.target.value);
+                      setFormData({ ...formData, cpf: masked });
+                      if (masked && masked.replace(/\D/g, '').length === 11) {
+                        if (!isValidCPF(masked)) {
+                          setCpfError('CPF inválido. Verifique os dígitos.');
+                        } else {
+                          setCpfError(null);
+                        }
+                      } else {
+                        setCpfError(null);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (formData.cpf && !isValidCPF(formData.cpf)) {
+                        setCpfError('CPF inválido. Verifique os dígitos.');
+                      } else {
+                        setCpfError(null);
+                      }
+                    }}
                     placeholder="000.000.000-00"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    className={`w-full p-2.5 bg-slate-50 border rounded-xl focus:bg-white focus:outline-none transition-all ${
+                      cpfError 
+                        ? 'border-rose-400 focus:ring-2 focus:ring-rose-500/20 text-rose-900 bg-rose-50/30' 
+                        : 'border-slate-200 focus:ring-2 focus:ring-brand-500/20'
+                    }`}
                   />
+                  {cpfError && (
+                    <p className="text-[11px] text-rose-600 mt-1 font-medium">{cpfError}</p>
+                  )}
                 </div>
 
                 <div>

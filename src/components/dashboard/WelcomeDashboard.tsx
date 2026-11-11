@@ -13,6 +13,7 @@ import {
   Building2,
   Sparkles
 } from 'lucide-react';
+import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 import { isSupabaseConfigured } from '../../lib/supabase';
 
 interface WelcomeDashboardProps {
@@ -71,7 +72,7 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               onClick={onGoToWhatsApp}
               className="py-2.5 px-4 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/80 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
             >
-              <MessageSquare className="w-4 h-4 text-emerald-400" />
+              <WhatsAppIcon className="w-4 h-4 text-emerald-400" />
               <span>Conectar WhatsApp</span>
             </button>
           </div>

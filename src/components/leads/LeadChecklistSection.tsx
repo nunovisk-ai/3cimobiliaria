@@ -7,10 +7,10 @@ import {
   Upload, 
   ExternalLink, 
   Copy, 
-  MessageSquare,
   ShieldAlert,
   Check
 } from 'lucide-react';
+import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 
 interface LeadChecklistSectionProps {
   leadId: string;
@@ -171,38 +171,41 @@ export const LeadChecklistSection: React.FC<LeadChecklistSectionProps> = ({
       
       {/* Overview Progress & WhatsApp Quick Actions Bar */}
       <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                Checklist de Documentos (Caixa Econômica)
-              </h4>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="space-y-1.5 min-w-0">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Checklist de Documentos (Caixa Econômica)
+            </h4>
+
+            {/* Badges row with nowrap */}
+            <div className="flex items-center flex-wrap gap-2 pt-0.5">
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700 whitespace-nowrap flex-shrink-0">
                 {coletadosCount} de {totalItems} Coletados
               </span>
               {aprovadosCount > 0 && (
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap flex-shrink-0">
                   {aprovadosCount} Aprovados
                 </span>
               )}
               {rejeitadosCount > 0 && (
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
+                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1 whitespace-nowrap flex-shrink-0">
+                  <AlertCircle className="w-3 h-3 flex-shrink-0" />
                   <span>{rejeitadosCount} Pendente(s) de Correção</span>
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-500 mt-0.5">
+
+            <p className="text-[11px] text-slate-500">
               Marque o que o cliente já entregou e acompanhe o parecer da assessoria de crédito
             </p>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={handleCopyWhatsAppMessage}
-              className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+              className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer whitespace-nowrap"
             >
               {copiedMessage ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
               <span>{copiedMessage ? 'Copiado!' : 'Copiar Pendências'}</span>
@@ -211,9 +214,9 @@ export const LeadChecklistSection: React.FC<LeadChecklistSectionProps> = ({
             <button
               type="button"
               onClick={handleSendWhatsApp}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
             >
-              <MessageSquare className="w-3.5 h-3.5" />
+              <WhatsAppIcon className="w-3.5 h-3.5" />
               <span>Cobrar no WhatsApp</span>
             </button>
           </div>

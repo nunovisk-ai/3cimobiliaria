@@ -3,7 +3,6 @@ import { Lead, FunnelStage } from '../../types';
 import { 
   Search, 
   UserPlus, 
-  MessageSquare, 
   Building2, 
   RotateCw, 
   ArrowLeft, 
@@ -14,6 +13,7 @@ import {
   FileText,
   Check
 } from 'lucide-react';
+import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 
 interface KanbanBoardProps {
   leads: Lead[];
@@ -377,7 +377,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               title="Abrir conversa no WhatsApp Inbox"
                               className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-medium flex items-center gap-1 transition-colors cursor-pointer"
                             >
-                              <MessageSquare className="w-3 h-3" />
+                              <WhatsAppIcon className="w-3 h-3 text-emerald-600" />
                               <span>WhatsApp</span>
                             </button>
 

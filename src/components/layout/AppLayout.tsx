@@ -4,17 +4,16 @@ import {
   LayoutDashboard, 
   Filter, 
   CalendarDays, 
-  MessageSquare, 
   Building2,
   Users,
   LogOut, 
-  Smartphone, 
   Bell,
   Menu,
   X,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -160,7 +159,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
             >
-              <MessageSquare className="w-4 h-4 flex-shrink-0" />
+              <WhatsAppIcon className="w-4 h-4 flex-shrink-0" />
               {!isCollapsed && <span>WhatsApp Inbox</span>}
               {isWhatsAppConnected && !isCollapsed && (
                 <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -224,7 +223,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             >
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isWhatsAppConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                <Smartphone className="w-3.5 h-3.5 flex-shrink-0" />
+                <WhatsAppIcon className="w-3.5 h-3.5 flex-shrink-0 text-emerald-600" />
                 <span className="font-semibold truncate">
                   {isWhatsAppConnected ? (whatsappPhone || 'WhatsApp Ativo') : 'Conectar WhatsApp'}
                 </span>
@@ -240,7 +239,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   : 'bg-amber-50 border-amber-200 text-amber-700'
               }`}
             >
-              <Smartphone className="w-4 h-4" />
+              <WhatsAppIcon className="w-4 h-4 text-emerald-600" />
             </button>
           )}
 
@@ -324,7 +323,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               }`}
             >
               <span className={`w-1.5 h-1.5 rounded-full ${isWhatsAppConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-              <Smartphone className="w-3 h-3" />
+              <WhatsAppIcon className="w-3 h-3 text-emerald-600" />
             </div>
 
             {/* Notification Bell */}
@@ -436,7 +435,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     activeTab === 'whatsapp' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <MessageSquare className="w-4 h-4" />
+                  <WhatsAppIcon className="w-4 h-4" />
                   <span>WhatsApp Inbox</span>
                 </button>
               </div>
