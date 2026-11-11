@@ -139,13 +139,15 @@ CREATE TABLE IF NOT EXISTS public.whatsapp_messages (
 -- ==============================================================================
 -- DADOS INICIAIS DE DEMONSTRAÇÃO (EMPREENDIMENTOS DE SÃO PAULO)
 -- ==============================================================================
-INSERT INTO public.empreendimentos (nome, construtora, regiao_sp, endereco_plantao, faixa_preco_de, faixa_preco_ate)
+INSERT INTO public.empreendimentos (nome, construtora, regiao_sp, endereco_plantao, faixa_preco_de, faixa_preco_ate, link_book_pdf)
 VALUES 
-    ('Vibe Pinheiros', 'Cyrela', 'Pinheiros - Zona Oeste', 'Rua dos Pinheiros, 850 - Pinheiros, SP', 380000.00, 650000.00),
-    ('Today Moema', 'Canopus', 'Moema - Zona Sul', 'Av. Moaci, 420 - Moema, SP', 420000.00, 780000.00),
-    ('Vivaz Estação Tatuapé', 'Vivaz', 'Tatuapé - Zona Leste', 'Rua Tuiuti, 1200 - Tatuapé, SP', 240000.00, 360000.00),
-    ('Cury Metrô Belém', 'Cury', 'Belém - Zona Leste', 'Av. Celso Garcia, 1800 - Belém, SP', 215000.00, 320000.00),
-    ('Plano&Ipiranga', 'Plano&Plano', 'Ipiranga - Zona Sul', 'Rua Silva Bueno, 1500 - Ipiranga, SP', 190000.00, 290000.00)
+    ('Link Itaquera', 'Link', 'Itaquera - Zona Leste', 'Av. Itaquera, 2400 - Itaquera, São Paulo - SP', 259900.00, 310000.00, 'https://www.3cimobiliaria.com.br/linkitaquera'),
+    ('Gran Arena Itaquera', '3C Vendas', 'Itaquera - Zona Leste', 'Em frente à Neo Química Arena - Itaquera, SP', 229000.00, 285000.00, 'https://www.3cimobiliaria.com.br/granarenaitaquera'),
+    ('Inspire Esperança / Guilhermina', '3C Vendas', 'Vila Guilhermina - Zona Leste', 'Rua Costa Rego, 28 - Vila Guilhermina, SP', 199000.00, 260000.00, 'https://www.3cimobiliaria.com.br/inspireguilhermina'),
+    ('Cidade Mooca Venezia', 'Cury Construtora', 'Mooca - Zona Leste', 'Rua Borges de Figueiredo, 1100 - Mooca, SP', 280000.00, 420000.00, 'https://www.3cimobiliaria.com.br/cidademoocavenezia'),
+    ('Cidade Sete Sóis', 'MRV Engenharia', 'São Paulo - SP', 'Av. das Nações Unidas / SP', 210000.00, 295000.00, 'https://www.3cimobiliaria.com.br/cidadesetesois'),
+    ('Mérito Guarulhos', 'Cury Construtora', 'Guarulhos - Grande SP', 'Av. Monteiro Lobato, 1200 - Guarulhos, SP', 225000.00, 320000.00, 'https://www.3cimobiliaria.com.br/meritoguarulhos'),
+    ('Vibra Vila Carrão', 'Vibra Residencial', 'Vila Carrão - Zona Leste', 'A 600m do futuro Metrô Aricanduva - Vila Carrão, SP', 245000.00, 340000.00, 'https://www.3cimobiliaria.com.br')
 ON CONFLICT DO NOTHING;
 
 -- ==============================================================================
