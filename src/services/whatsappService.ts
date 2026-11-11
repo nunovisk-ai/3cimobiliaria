@@ -270,6 +270,132 @@ function formatTargetNumber(phoneOrJid: string): string {
   return cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 }
 
+function unwrapWhatsAppMessage(rawMsg: any): any {
+  if (!rawMsg) return null;
+  if (rawMsg.ephemeralMessage?.message) return unwrapWhatsAppMessage(rawMsg.ephemeralMessage.message);
+  if (rawMsg.viewOnceMessage?.message) return unwrapWhatsAppMessage(rawMsg.viewOnceMessage.message);
+  if (rawMsg.viewOnceMessageV2?.message) return unwrapWhatsAppMessage(rawMsg.viewOnceMessageV2.message);
+  if (rawMsg.viewOnceMessageV2Extension?.message) return unwrapWhatsAppMessage(rawMsg.viewOnceMessageV2Extension.message);
+  if (rawMsg.documentWithCaptionMessage?.message) return unwrapWhatsAppMessage(rawMsg.documentWithCaptionMessage.message);
+  if (rawMsg.editedMessage?.message?.protocolMessage?.editedMessage) {
+    return unwrapWhatsAppMessage(rawMsg.editedMessage.message.protocolMessage.editedMessage);
+  }
+  return rawMsg;
+}
+
+function parseWhatsAppMessageContent(rawMsg: any): {
+  text: string;
+  sidebarText: string;
+  mediaType?: 'audio' | 'image' | 'document' | 'sticker' | 'video' | 'gif';
+  mediaName?: string;
+  audioDuration?: number;
+  audioUrl?: string;
+  isReaction?: boolean;
+} {
+  const m = unwrapWhatsAppMessage(rawMsg);
+  if (!m) return { text: '', sidebarText: '' };
+
+  if (m.reactionMessage) {
+    return { text: '', sidebarText: '', isReaction: true };
+  }
+
+  if (m.conversation && typeof m.conversation === 'string') {
+    return { text: m.conversation, sidebarText: m.conversation };
+  }
+  if (m.extendedTextMessage?.text) {
+    return { text: m.extendedTextMessage.text, sidebarText: m.extendedTextMessage.text };
+  }
+  if (m.stickerMessage) {
+    return {
+      text: '🏷️ Figurinha',
+      sidebarText: '🏷️ Figurinha',
+      mediaType: 'sticker',
+    };
+  }
+  if (m.imageMessage) {
+    const cap = m.imageMessage.caption?.trim();
+    return {
+      text: cap ? `📷 ${cap}` : '📷 Imagem',
+      sidebarText: cap ? `📷 ${cap}` : '📷 Imagem',
+      mediaType: 'image',
+    };
+  }
+  if (m.videoMessage) {
+    const isGif = Boolean(m.videoMessage.gifPlayback);
+    const cap = m.videoMessage.caption?.trim();
+    if (isGif) {
+      return {
+        text: cap ? `👾 ${cap}` : '👾 GIF',
+        sidebarText: cap ? `👾 ${cap}` : '👾 GIF',
+        mediaType: 'gif',
+      };
+    }
+    return {
+      text: cap ? `🎬 ${cap}` : '🎬 Vídeo',
+      sidebarText: cap ? `🎬 ${cap}` : '🎬 Vídeo',
+      mediaType: 'video',
+    };
+  }
+  if (m.ptvMessage) {
+    return {
+      text: '🎬 Recado de Vídeo',
+      sidebarText: '🎬 Recado de Vídeo',
+      mediaType: 'video',
+    };
+  }
+  if (m.audioMessage) {
+    const secs = m.audioMessage.seconds ? Number(m.audioMessage.seconds) : undefined;
+    const label = secs
+      ? `🎤 Mensagem de Áudio (${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')})`
+      : '🎤 Mensagem de Áudio';
+    return {
+      text: label,
+      sidebarText: '🎤 Mensagem de Áudio',
+      mediaType: 'audio',
+      audioDuration: secs,
+      audioUrl: m.audioMessage.url || undefined,
+    };
+  }
+  if (m.documentMessage) {
+    const fileName = m.documentMessage.fileName || m.documentMessage.title || 'Documento';
+    const cap = m.documentMessage.caption?.trim();
+    return {
+      text: cap ? `📄 ${cap}` : `📄 ${fileName}`,
+      sidebarText: cap ? `📄 ${cap}` : `📄 ${fileName}`,
+      mediaType: 'document',
+      mediaName: fileName,
+    };
+  }
+  if (m.contactMessage || m.contactsArrayMessage) {
+    const cName = m.contactMessage?.displayName || m.contactsArrayMessage?.contacts?.[0]?.displayName || 'Contato';
+    return {
+      text: `👤 Contato: ${cName}`,
+      sidebarText: `👤 Contato: ${cName}`,
+    };
+  }
+  if (m.locationMessage || m.liveLocationMessage) {
+    const locName = m.locationMessage?.name || m.locationMessage?.address || '';
+    return {
+      text: locName ? `📍 Localização: ${locName}` : '📍 Localização compartilhada',
+      sidebarText: '📍 Localização',
+    };
+  }
+  if (m.buttonsResponseMessage?.selectedDisplayText) {
+    const t = m.buttonsResponseMessage.selectedDisplayText;
+    return { text: t, sidebarText: t };
+  }
+  if (m.listResponseMessage?.title) {
+    const t = m.listResponseMessage.title;
+    return { text: t, sidebarText: t };
+  }
+  if (m.templateButtonReplyMessage?.selectedDisplayText) {
+    const t = m.templateButtonReplyMessage.selectedDisplayText;
+    return { text: t, sidebarText: t };
+  }
+
+  return { text: '', sidebarText: '' };
+}
+
 export const whatsappService = {
   /**
    * Fetches the live QR code from Evolution API
@@ -608,7 +734,7 @@ export const whatsappService = {
         picMemoryCache.set(k, v === 'NONE' ? null : v);
       }
 
-      const [chatsRes, contactsRes, incomingMsgsRes] = await Promise.allSettled([
+      const [chatsRes, contactsRes, recentMsgsRes] = await Promise.allSettled([
         fetch(`${EVOLUTION_API_URL}/chat/findChats/${sessionName}`, {
           method: 'POST',
           headers: {
@@ -632,12 +758,8 @@ export const whatsappService = {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            where: {
-              key: {
-                fromMe: false,
-              },
-            },
-            limit: 150,
+            page: 1,
+            offset: 250,
           }),
         }),
       ]);
@@ -661,14 +783,24 @@ export const whatsappService = {
         }
       }
 
-      // Extract LID -> Phone mappings, contact names, and read/unread statuses from recent messages
+      // Extract LID -> Phone mappings, contact names, latest messages, and real-time delivery/read statuses from recent messages
       const unreadMessageKeysByJid = new Map<string, Array<{ id: string; fromMe: boolean; remoteJid: string }>>();
       const latestIncomingReadByJid = new Map<string, { timestamp: number; isRead: boolean }>();
       const latestOutgoingStatusByJid = new Map<string, { timestamp: number; status: 'sent' | 'delivered' | 'read' }>();
+      const messageStatusById = new Map<string, 'sent' | 'delivered' | 'read'>();
+      const latestMessageByJid = new Map<string, {
+        timestamp: number;
+        text: string;
+        fromMe: boolean;
+        status: 'sent' | 'delivered' | 'read';
+        id?: string;
+        messageType?: string;
+      }>();
+      const statusRank: Record<'sent' | 'delivered' | 'read', number> = { sent: 1, delivered: 2, read: 3 };
 
-      if (incomingMsgsRes.status === 'fulfilled' && incomingMsgsRes.value.ok) {
+      if (recentMsgsRes.status === 'fulfilled' && recentMsgsRes.value.ok) {
         try {
-          const msgData = await incomingMsgsRes.value.json();
+          const msgData = await recentMsgsRes.value.json();
           const records = msgData?.messages?.records || (Array.isArray(msgData) ? msgData : []);
           let namesUpdated = false;
           let lidsUpdated = false;
@@ -701,10 +833,39 @@ export const whatsappService = {
               const msgStatus = extractMessageStatus(m);
               if (msgStatus === 'deleted') continue;
 
+              if (msgId) {
+                const prevIdStat = messageStatusById.get(msgId);
+                if (!prevIdStat || statusRank[msgStatus] > statusRank[prevIdStat]) {
+                  messageStatusById.set(msgId, msgStatus);
+                }
+              }
+
               const msgTs = m.messageTimestamp
                 ? m.messageTimestamp * 1000
                 : new Date(m.createdAt || 0).getTime();
-              const targetJids = [jid, ...(alt && !alt.includes('@g.us') ? [alt] : [])];
+              const mappedAlt = lidMemoryCache.get(jid);
+              const targetJids = Array.from(new Set([
+                jid,
+                ...(alt && !alt.includes('@g.us') ? [alt] : []),
+                ...(mappedAlt && !mappedAlt.includes('@g.us') ? [mappedAlt] : []),
+              ]));
+
+              const parsedContent = parseWhatsAppMessageContent(m.message);
+              if (!parsedContent.isReaction && parsedContent.sidebarText) {
+                for (const tj of targetJids) {
+                  const prevLatest = latestMessageByJid.get(tj);
+                  if (!prevLatest || msgTs > prevLatest.timestamp || (msgTs === prevLatest.timestamp && statusRank[msgStatus] > statusRank[prevLatest.status])) {
+                    latestMessageByJid.set(tj, {
+                      timestamp: msgTs,
+                      text: parsedContent.sidebarText,
+                      fromMe,
+                      status: msgStatus,
+                      id: msgId,
+                      messageType: m.messageType,
+                    });
+                  }
+                }
+              }
 
               if (!fromMe) {
                 const isRead = msgStatus === 'read';
@@ -728,7 +889,7 @@ export const whatsappService = {
                 const cleanStat: 'sent' | 'delivered' | 'read' = msgStatus;
                 for (const tj of targetJids) {
                   const prev = latestOutgoingStatusByJid.get(tj);
-                  if (!prev || msgTs >= prev.timestamp) {
+                  if (!prev || msgTs > prev.timestamp || (msgTs === prev.timestamp && statusRank[cleanStat] > statusRank[prev.status])) {
                     latestOutgoingStatusByJid.set(tj, { timestamp: msgTs, status: cleanStat });
                   }
                 }
@@ -811,23 +972,7 @@ export const whatsappService = {
       // Helper to extract message text from a chat's lastMessage
       const getChatLastMsgText = (c: any): string => {
         if (!c?.lastMessage?.message) return '';
-        const m = c.lastMessage.message;
-        const docMsg = m.documentMessage || m.documentWithCaptionMessage?.message?.documentMessage;
-        const tplText =
-          m.templateMessage?.hydratedFourRowTemplate?.hydratedContentText ||
-          m.templateMessage?.interactiveMessageTemplate?.body?.text ||
-          '';
-        return (
-          m.conversation ||
-          m.extendedTextMessage?.text ||
-          m.imageMessage?.caption ||
-          docMsg?.caption ||
-          tplText ||
-          (m.audioMessage ? '🎤 Mensagem de áudio' : '') ||
-          (m.imageMessage ? '📷 Imagem' : '') ||
-          (docMsg ? `📄 ${docMsg.fileName || docMsg.title || 'Documento'}` : '') ||
-          ''
-        );
+        return parseWhatsAppMessageContent(c.lastMessage.message).sidebarText;
       };
 
       // Discover additional LID -> Phone mappings from chat lastMessage keys, CDN profile picture filenames, or vocative greetings
@@ -899,7 +1044,9 @@ export const whatsappService = {
         }
 
         const existing = unifiedMap.get(canonicalJid);
-        const curTimestamp = new Date(c.updatedAt || c.lastMessage?.messageTimestamp * 1000 || 0).getTime();
+        const curTimestamp = c.lastMessage?.messageTimestamp
+          ? c.lastMessage.messageTimestamp * 1000
+          : new Date(c.updatedAt || 0).getTime();
 
         if (!existing) {
           unifiedMap.set(canonicalJid, {
@@ -943,8 +1090,27 @@ export const whatsappService = {
         }
 
         const jidCandidates = Array.from(new Set([canonicalJid, ...allJids]));
-        const lastMsg = getChatLastMsgText(c);
-        const lastFromMe = Boolean(c.lastMessage?.key?.fromMe);
+        let lastMsg = getChatLastMsgText(c);
+        let lastFromMe = Boolean(c.lastMessage?.key?.fromMe);
+        let lastMsgId = c.lastMessage?.key?.id;
+        let lastMsgType = c.lastMessage?.messageType;
+        let lastMsgTs = c.lastMessage?.messageTimestamp
+          ? c.lastMessage.messageTimestamp * 1000
+          : new Date(c.updatedAt || Date.now()).getTime();
+
+        // Check if findMessages has a more recent or better-parsed message across unified JIDs
+        for (const jid of jidCandidates) {
+          const recentMsg = latestMessageByJid.get(jid);
+          if (recentMsg && (recentMsg.timestamp > lastMsgTs || !lastMsg)) {
+            lastMsg = recentMsg.text;
+            lastFromMe = recentMsg.fromMe;
+            lastMsgTs = recentMsg.timestamp;
+            lastMsgId = recentMsg.id || lastMsgId;
+            lastMsgType = recentMsg.messageType || lastMsgType;
+          }
+        }
+
+        const lastTime = new Date(lastMsgTs).toISOString();
 
         // Resolve Contact Name:
         // 1. From contactsMap (saved contacts in WhatsApp)
@@ -1015,17 +1181,36 @@ export const whatsappService = {
           }
         }
 
-        const lastTime = c.updatedAt || (c.lastMessage?.messageTimestamp ? new Date(c.lastMessage.messageTimestamp * 1000).toISOString() : new Date().toISOString());
-        const lastMsgTs = new Date(lastTime).getTime();
+        let rawExtractedStatus = extractMessageStatus(c.lastMessage);
+        let lastMessageStatus: 'sent' | 'delivered' | 'read' =
+          rawExtractedStatus === 'deleted' ? 'delivered' : rawExtractedStatus;
 
-        let lastMessageStatus = extractMessageStatus(c.lastMessage);
         if (lastFromMe) {
+          // 1. Check exact message ID status from findMessages (which includes MessageUpdate)
+          if (lastMsgId && messageStatusById.has(lastMsgId)) {
+            const idStat = messageStatusById.get(lastMsgId)!;
+            if (statusRank[idStat] > statusRank[lastMessageStatus]) {
+              lastMessageStatus = idStat;
+            }
+          }
+
+          // 2. Check latest outgoing status across all unified JIDs for this contact
           for (const jid of jidCandidates) {
             const outStat = latestOutgoingStatusByJid.get(jid);
-            if (outStat?.status === 'read') {
-              lastMessageStatus = 'read';
-              break;
+            if (outStat && statusRank[outStat.status] > statusRank[lastMessageStatus]) {
+              lastMessageStatus = outStat.status;
             }
+          }
+
+          // 3. In Evolution API findChats, c.lastMessage.MessageUpdate is omitted and status stays at initial SERVER_ACK/PENDING.
+          // If this message was not in the recent 250 messages and is older than 15s, treat stale SERVER_ACK/PENDING as delivered.
+          if (
+            lastMessageStatus === 'sent' &&
+            (!lastMsgId || !messageStatusById.has(lastMsgId)) &&
+            !Array.isArray(c.lastMessage?.MessageUpdate) &&
+            Date.now() - lastMsgTs > 15000
+          ) {
+            lastMessageStatus = 'delivered';
           }
         }
 
@@ -1082,9 +1267,9 @@ export const whatsappService = {
           profilePicUrl: picUrl,
           lastMessage: lastMsg,
           lastMessageTimestamp: lastTime,
-          lastMessageType: c.lastMessage?.messageType,
+          lastMessageType: lastMsgType,
           lastFromMe,
-          lastMessageStatus: lastMessageStatus === 'deleted' ? 'delivered' : lastMessageStatus,
+          lastMessageStatus,
         };
       });
 
@@ -1163,7 +1348,8 @@ export const whatsappService = {
                     remoteJid: jid,
                   },
                 },
-                limit: 15,
+                page: 1,
+                offset: 20,
               }),
             }).then(r => (r.ok ? r.json() : null))
           )
@@ -1235,6 +1421,8 @@ export const whatsappService = {
                   remoteJid: jid,
                 },
               },
+              page: 1,
+              offset: 100,
             }),
           }).then(r => r.ok ? r.json() : [])
         )
@@ -1272,29 +1460,10 @@ export const whatsappService = {
                 }
               }
 
-              const msgObj = m.message || {};
-              const docObj = msgObj.documentMessage || msgObj.documentWithCaptionMessage?.message?.documentMessage;
-              const isAudio = Boolean(msgObj.audioMessage);
-              const isImage = Boolean(msgObj.imageMessage);
-              const isDoc = Boolean(docObj);
-              const audioSec = msgObj.audioMessage?.seconds || 0;
-              const docFileName = docObj?.fileName || docObj?.title || 'Documento';
+              const parsedContent = parseWhatsAppMessageContent(m.message);
+              const text = parsedContent.text;
 
-              const tplText = msgObj.templateMessage?.hydratedFourRowTemplate?.hydratedContentText ||
-                              msgObj.templateMessage?.interactiveMessageTemplate?.body?.text ||
-                              '';
-
-              const text = msgObj.conversation || 
-                           msgObj.extendedTextMessage?.text || 
-                           msgObj.imageMessage?.caption || 
-                           docObj?.caption ||
-                           tplText ||
-                           (isAudio ? '🎤 Mensagem de áudio' : '') ||
-                           (isImage ? '📷 Imagem' : '') ||
-                           (isDoc ? `📄 ${docFileName}` : '') ||
-                           '';
-
-              if (!fallbackExtractedName && text) {
+              if (!fallbackExtractedName && text && !parsedContent.mediaType) {
                 const ext = extractNameFromMessageText(text, Boolean(m.key?.fromMe));
                 if (ext && isValidContactName(ext)) {
                   fallbackExtractedName = ext;
@@ -1323,10 +1492,10 @@ export const whatsappService = {
                 fromMe: Boolean(m.key?.fromMe),
                 senderName: validSender,
                 text: text,
-                mediaType: isAudio ? 'audio' : (isImage ? 'image' : (isDoc ? 'document' : undefined)),
-                mediaName: isDoc ? docFileName : undefined,
-                audioDuration: isAudio ? audioSec : undefined,
-                audioUrl: msgObj.audioMessage?.url || undefined,
+                mediaType: parsedContent.mediaType,
+                mediaName: parsedContent.mediaName,
+                audioDuration: parsedContent.audioDuration,
+                audioUrl: parsedContent.audioUrl,
                 timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
                 status: (msgStatus === 'deleted' ? 'delivered' : msgStatus) as 'sent' | 'delivered' | 'read',
               };
@@ -1347,9 +1516,10 @@ export const whatsappService = {
       console.warn('Could not fetch messages from Evolution API:', err);
     }
 
-    // Also get Supabase messages for leadId if present
+    // Only fall back to Supabase messages if Evolution API returned no messages for this lead
+    // (Prevents Supabase text logs of media captions from duplicating Evolution API media bubbles)
     let supabaseMsgs: WhatsAppMessage[] = [];
-    if (leadId) {
+    if (leadId && evolutionMsgs.length === 0) {
       try {
         supabaseMsgs = await this.getMessages(leadId);
       } catch {
@@ -1363,7 +1533,7 @@ export const whatsappService = {
     const byKey = new Map<string, WhatsAppMessage>();
 
     for (const msg of combined) {
-      const contentKey = `${msg.fromMe}_${msg.text}_${msg.timestamp.slice(0, 19)}`;
+      const contentKey = `${msg.fromMe}_${msg.mediaType || 'text'}_${msg.text}_${msg.timestamp.slice(0, 19)}`;
       const existing = byKey.get(contentKey) || (msg.id ? byKey.get(msg.id) : undefined);
       if (!existing) {
         byKey.set(contentKey, msg);

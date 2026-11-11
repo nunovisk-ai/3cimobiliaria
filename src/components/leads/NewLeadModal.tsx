@@ -24,11 +24,11 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   const [rendaMensal, setRendaMensal] = useState<number | ''>(initialValues?.rendaMensal || '');
   const [fgtsValor, setFgtsValor] = useState<number | ''>(initialValues?.fgtsValor || '');
   const [empreendimentoInteresse, setEmpreendimentoInteresse] = useState(
-    initialValues?.empreendimentoInteresse || (empreendimentos.length > 0 ? empreendimentos[0].nome : 'Link Itaquera')
+    initialValues?.empreendimentoInteresse || ''
   );
   const [statusFunil, setStatusFunil] = useState<FunnelStage>(initialValues?.statusFunil || 'novo_lead');
-  const [origemLead, setOrigemLead] = useState<'whatsapp' | 'zap' | 'meta' | 'google' | 'indicacao'>(
-    (initialValues?.origemLead as any) || 'whatsapp'
+  const [origemLead, setOrigemLead] = useState<'whatsapp' | 'zap' | 'meta' | 'google' | 'indicacao' | ''>(
+    (initialValues?.origemLead as any) || ''
   );
   const [observacoes, setObservacoes] = useState(initialValues?.observacoes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,9 +56,9 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
         cpf: cpf.trim() || undefined,
         rendaMensal: Number(rendaMensal) || 0,
         fgtsValor: Number(fgtsValor) || 0,
-        empreendimentoInteresse,
+        empreendimentoInteresse: empreendimentoInteresse || '',
         statusFunil,
-        origemLead,
+        origemLead: origemLead || '',
         observacoes: observacoes.trim() || undefined,
       });
       onClose();
@@ -202,13 +202,16 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Empreendimento de Interesse</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block font-semibold text-slate-700">Empreendimento de Interesse</label>
+              <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
+            </div>
             <select
               value={empreendimentoInteresse}
               onChange={(e) => setEmpreendimentoInteresse(e.target.value)}
-              className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
             >
-              <option value="A definir">A definir / Em qualificação</option>
+              <option value="">Selecione um empreendimento (Opcional)</option>
               {empreendimentos.map(emp => (
                 <option key={emp.id} value={emp.nome}>
                   {emp.nome} ({emp.construtora} • {emp.regiaoSp})
@@ -219,12 +222,16 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Origem do Lead</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-slate-700">Origem do Lead</label>
+                <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
+              </div>
               <select
                 value={origemLead}
                 onChange={(e) => setOrigemLead(e.target.value as any)}
-                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
               >
+                <option value="">Selecione a origem (Opcional)</option>
                 <option value="whatsapp">WhatsApp Direto</option>
                 <option value="zap">Portal Zap / VivaReal</option>
                 <option value="meta">Anúncio Meta (Instagram/Facebook)</option>
@@ -234,15 +241,20 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Etapa Inicial</label>
+              <label className="block font-semibold text-slate-700 mb-1">Etapa do Funil</label>
               <select
                 value={statusFunil}
                 onChange={(e) => setStatusFunil(e.target.value as FunnelStage)}
-                className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
               >
                 <option value="novo_lead">Novo Lead</option>
                 <option value="em_atendimento">Em Atendimento</option>
                 <option value="visita_agendada">Visita Agendada</option>
+                <option value="aguardando_docs">Aguardando Docs</option>
+                <option value="analise_credito">Análise Crédito</option>
+                <option value="proposta">Proposta</option>
+                <option value="venda_fechada">Venda Fechada</option>
+                <option value="descartado">Descartado</option>
               </select>
             </div>
           </div>

@@ -42,9 +42,9 @@ export const leadsService = {
         rendaMensal: Number(row.renda_bruta_mensal) || 0,
         fgtsValor: Number(row.fgts_saldo) || 0,
         fgtsAprovado: Boolean(row.fgts_aprovado),
-        empreendimentoInteresse: row.empreendimento_nome || 'A definir',
+        empreendimentoInteresse: (row.empreendimento_nome && row.empreendimento_nome !== 'A definir') ? row.empreendimento_nome : '',
         statusFunil: row.status_funil as FunnelStage,
-        origemLead: (row.origem as any) || 'whatsapp',
+        origemLead: (row.origem as any) || '',
         motivoDescarte: row.motivo_descarte,
         motivoRejeicaoCredito: row.motivo_rejeicao_credito,
         observacaoRejeicao: row.observacao_rejeicao,
@@ -73,9 +73,9 @@ export const leadsService = {
       renda_bruta_mensal: leadData.rendaMensal || 0,
       fgts_saldo: leadData.fgtsValor || 0,
       fgts_aprovado: leadData.fgtsAprovado || false,
-      empreendimento_nome: leadData.empreendimentoInteresse || 'A definir',
+      empreendimento_nome: leadData.empreendimentoInteresse ? leadData.empreendimentoInteresse : null,
       status_funil: leadData.statusFunil || 'novo_lead',
-      origem: leadData.origemLead || 'whatsapp',
+      origem: leadData.origemLead ? leadData.origemLead : null,
       observacoes: leadData.observacoes || null,
     };
 
@@ -101,9 +101,9 @@ export const leadsService = {
       rendaMensal: Number(data.renda_bruta_mensal) || 0,
       fgtsValor: Number(data.fgts_saldo) || 0,
       fgtsAprovado: Boolean(data.fgts_aprovado),
-      empreendimentoInteresse: data.empreendimento_nome,
+      empreendimentoInteresse: data.empreendimento_nome || '',
       statusFunil: data.status_funil as FunnelStage,
-      origemLead: data.origem as any,
+      origemLead: (data.origem as any) || '',
       createdAt: data.created_at,
       updatedAt: data.updated_at,
       ultimaInteracaoAt: data.ultima_interacao_at,
@@ -129,16 +129,16 @@ export const leadsService = {
     const payload: any = {};
     if (updates.nome !== undefined) payload.nome = updates.nome;
     if (updates.telefone !== undefined) payload.telefone = updates.telefone;
-    if (updates.email !== undefined) payload.email = updates.email;
-    if (updates.cpf !== undefined) payload.cpf = updates.cpf;
-    if (updates.dataNascimento !== undefined) payload.data_nascimento = updates.dataNascimento;
+    if (updates.email !== undefined) payload.email = updates.email || null;
+    if (updates.cpf !== undefined) payload.cpf = updates.cpf || null;
+    if (updates.dataNascimento !== undefined) payload.data_nascimento = updates.dataNascimento || null;
     if (updates.rendaMensal !== undefined) payload.renda_bruta_mensal = updates.rendaMensal;
     if (updates.fgtsValor !== undefined) payload.fgts_saldo = updates.fgtsValor;
     if (updates.fgtsAprovado !== undefined) payload.fgts_aprovado = updates.fgtsAprovado;
-    if (updates.empreendimentoInteresse !== undefined) payload.empreendimento_nome = updates.empreendimentoInteresse;
+    if (updates.empreendimentoInteresse !== undefined) payload.empreendimento_nome = updates.empreendimentoInteresse || null;
     if (updates.statusFunil !== undefined) payload.status_funil = updates.statusFunil;
-    if (updates.origemLead !== undefined) payload.origem = updates.origemLead;
-    if (updates.observacoes !== undefined) payload.observacoes = updates.observacoes;
+    if (updates.origemLead !== undefined) payload.origem = updates.origemLead || null;
+    if (updates.observacoes !== undefined) payload.observacoes = updates.observacoes || null;
     if (updates.motivoDescarte !== undefined) payload.motivo_descarte = updates.motivoDescarte;
     if (updates.motivoRejeicaoCredito !== undefined) payload.motivo_rejeicao_credito = updates.motivoRejeicaoCredito;
     if (updates.observacaoRejeicao !== undefined) payload.observacao_rejeicao = updates.observacaoRejeicao;

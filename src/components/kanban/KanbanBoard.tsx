@@ -320,7 +320,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         <div className="flex items-start justify-between gap-1 mb-1.5">
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 capitalize flex items-center gap-1">
                             <Clock className="w-2.5 h-2.5 text-slate-400" />
-                            <span>{lead.origemLead}</span>
+                            <span>{lead.origemLead || 'Sem origem'}</span>
                           </span>
 
                           <span className="text-[10px] text-slate-400">
@@ -334,10 +334,17 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         </h4>
 
                         {/* Development Interest */}
-                        <p className="text-[11px] text-brand-600 font-medium mt-1 flex items-center gap-1">
-                          <Building2 className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{lead.empreendimentoInteresse}</span>
-                        </p>
+                        {lead.empreendimentoInteresse ? (
+                          <p className="text-[11px] text-brand-600 font-medium mt-1 flex items-center gap-1">
+                            <Building2 className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{lead.empreendimentoInteresse}</span>
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-slate-400 font-normal mt-1 flex items-center gap-1">
+                            <Building2 className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">Sem empreendimento</span>
+                          </p>
+                        )}
 
                         {/* Financial Information (Renda + FGTS) */}
                         <div className="mt-2.5 pt-2 border-t border-slate-100 grid grid-cols-2 gap-1 text-[11px]">

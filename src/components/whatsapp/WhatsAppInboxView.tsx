@@ -7,16 +7,13 @@ import {
   Send, 
   Paperclip, 
   Building2, 
-  Calendar, 
   FileCheck2, 
   CheckCheck, 
   User, 
-  Info, 
   ChevronRight, 
   Wifi, 
   WifiOff, 
   UserPlus, 
-  Edit3, 
   AlertCircle, 
   Play, 
   Pause, 
@@ -28,7 +25,9 @@ import {
   Image as ImageIcon,
   FileText,
   Download,
-  X
+  X,
+  PanelRightClose,
+  PanelRightOpen
 } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 
@@ -308,14 +307,142 @@ const DocumentMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: s
   );
 };
 
+/**
+ * Embedded Sticker Message Viewer (renders WhatsApp WebP stickers)
+ */
+const StickerMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: string }> = ({ message, sessionName }) => {
+  const [stickerSrc, setStickerSrc] = useState<string | null>(message.mediaUrl || null);
+  const [isLoadingSticker, setIsLoadingSticker] = useState(false);
+
+  useEffect(() => {
+    if (message.mediaUrl) {
+      setStickerSrc(message.mediaUrl);
+      return;
+    }
+    let mounted = true;
+    setIsLoadingSticker(true);
+    whatsappService.getMediaBase64(sessionName, message.id)
+      .then(media => {
+        if (mounted && media?.base64) {
+          const mime = media.mimetype && media.mimetype.startsWith('image/') ? media.mimetype : 'image/webp';
+          setStickerSrc(`data:${mime};base64,${media.base64}`);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setIsLoadingSticker(false);
+      });
+    return () => { mounted = false; };
+  }, [message.id, message.mediaUrl, sessionName]);
+
+  return (
+    <div className="my-1 flex items-center justify-center">
+      {stickerSrc ? (
+        <img
+          src={stickerSrc}
+          alt="Figurinha do WhatsApp"
+          className="w-28 h-28 sm:w-32 sm:h-32 object-contain drop-shadow-xs select-none"
+        />
+      ) : isLoadingSticker ? (
+        <div className="w-28 h-28 rounded-2xl bg-black/10 animate-pulse flex items-center justify-center text-[11px]">
+          Carregando figurinha...
+        </div>
+      ) : (
+        <span className="text-xs font-medium">🏷️ Figurinha</span>
+      )}
+    </div>
+  );
+};
+
+/**
+ * Embedded Video & Animated GIF Message Viewer
+ */
+const VideoOrGifMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: string }> = ({ message, sessionName }) => {
+  const [videoSrc, setVideoSrc] = useState<string | null>(message.mediaUrl || null);
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false);
+  const isGif = message.mediaType === 'gif';
+
+  useEffect(() => {
+    if (message.mediaUrl) {
+      setVideoSrc(message.mediaUrl);
+      return;
+    }
+    let mounted = true;
+    setIsLoadingVideo(true);
+    whatsappService.getMediaBase64(sessionName, message.id)
+      .then(media => {
+        if (mounted && media?.base64) {
+          const mime = media.mimetype && (media.mimetype.startsWith('video/') || media.mimetype.startsWith('image/'))
+            ? media.mimetype
+            : 'video/mp4';
+          setVideoSrc(`data:${mime};base64,${media.base64}`);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setIsLoadingVideo(false);
+      });
+    return () => { mounted = false; };
+  }, [message.id, message.mediaUrl, sessionName]);
+
+  const caption =
+    message.text && message.text !== '👾 GIF' && message.text !== '🎬 Vídeo'
+      ? message.text
+      : '';
+
+  return (
+    <div className="space-y-1.5 my-0.5">
+      {videoSrc ? (
+        <div className="relative inline-block overflow-hidden rounded-xl border border-black/10 bg-black/5">
+          {videoSrc.startsWith('data:image/') ? (
+            <img
+              src={videoSrc}
+              alt={caption || 'GIF'}
+              className="max-h-60 w-auto object-cover rounded-xl"
+            />
+          ) : isGif ? (
+            <video
+              src={videoSrc}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="max-h-60 w-auto object-cover rounded-xl"
+            />
+          ) : (
+            <video
+              src={videoSrc}
+              controls
+              playsInline
+              className="max-h-64 w-auto rounded-xl bg-black"
+            />
+          )}
+          {isGif && (
+            <span className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-black/60 text-white text-[9px] font-extrabold tracking-wider uppercase pointer-events-none">
+              GIF
+            </span>
+          )}
+        </div>
+      ) : isLoadingVideo ? (
+        <div className="w-48 h-36 rounded-xl bg-black/10 animate-pulse flex items-center justify-center text-[11px]">
+          {isGif ? 'Carregando GIF...' : 'Carregando vídeo...'}
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5 py-1">
+          <span>{message.text || (isGif ? '👾 GIF' : '🎬 Vídeo')}</span>
+        </div>
+      )}
+      {caption && <p className="whitespace-pre-wrap pt-0.5">{caption}</p>}
+    </div>
+  );
+};
+
 export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   leads,
   initialSelectedLeadId,
   instance,
   empreendimentos = [],
   onSelectLeadForCRM,
-  onScheduleVisit,
-  onLeadStageChange,
   onOpenConnectModal,
   onOpenCreateLead,
   onUpdateLead,
@@ -329,7 +456,56 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [brokenPics, setBrokenPics] = useState<Record<string, boolean>>({});
   const recentSentMessagesRef = useRef<Array<{ chatKey: string; msg: WhatsAppMessage; sentAt: number }>>([]);
+  const recentChatSnippetsRef = useRef<Record<string, { text: string; timestamp: string; status: 'sent' | 'delivered' | 'read'; updatedAt: number }>>({});
   const readTimestampsRef = useRef<Record<string, number>>({});
+
+  // Immediately updates the conversation preview in the left sidebar (0ms delay) when sending a message
+  const updateSidebarConversationPreview = (
+    chatKey: string,
+    previewText: string,
+    status: 'sent' | 'delivered' | 'read',
+    timestampIso?: string
+  ) => {
+    const ts = timestampIso || new Date().toISOString();
+    recentChatSnippetsRef.current[chatKey] = {
+      text: previewText,
+      timestamp: ts,
+      status,
+      updatedAt: Date.now(),
+    };
+
+    setUnlinkedContacts(prev =>
+      prev.map(c =>
+        c.id === chatKey
+          ? {
+              ...c,
+              mensagem: previewText,
+              enviadaAt: ts,
+              lastFromMe: true,
+              lastMessageStatus: status,
+              unreadCount: 0,
+            }
+          : c
+      )
+    );
+
+    setRealChatMap(prev => {
+      if (!prev.has(chatKey)) return prev;
+      const next = new Map(prev);
+      const cur = next.get(chatKey);
+      if (cur) {
+        next.set(chatKey, {
+          ...cur,
+          lastMessage: previewText,
+          lastMessageTimestamp: ts,
+          lastFromMe: true,
+          lastMessageStatus: status,
+          unreadCount: 0,
+        });
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     try {
@@ -449,7 +625,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [editRenda, setEditRenda] = useState<number | ''>('');
   const [editFgts, setEditFgts] = useState<number | ''>('');
   const [editEmpreendimento, setEditEmpreendimento] = useState('');
-  const [editOrigem, setEditOrigem] = useState<'whatsapp' | 'zap' | 'meta' | 'google' | 'indicacao'>('whatsapp');
+  const [editOrigem, setEditOrigem] = useState<'whatsapp' | 'zap' | 'meta' | 'google' | 'indicacao' | ''>('');
   const [editStatusFunil, setEditStatusFunil] = useState<FunnelStage>('novo_lead');
   const [editObservacoes, setEditObservacoes] = useState('');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -573,8 +749,41 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           }
         }
 
+        // Preserve any very recently sent message snippet from the current user so an in-flight poll never reverts it
+        const recentSnippet =
+          recentChatSnippetsRef.current[chatKey] ||
+          recentChatSnippetsRef.current[chat.remoteJid];
+        const statusRank: Record<'sent' | 'delivered' | 'read', number> = { sent: 1, delivered: 2, read: 3 };
+        let finalLastMessage = chat.lastMessage;
+        let finalTimestamp = chat.lastMessageTimestamp;
+        let finalLastFromMe = chat.lastFromMe;
+        let finalStatus: 'sent' | 'delivered' | 'read' = chat.lastMessageStatus || 'delivered';
+
+        if (
+          recentSnippet &&
+          Date.now() - recentSnippet.updatedAt < 25000 &&
+          new Date(recentSnippet.timestamp).getTime() >= msgTs - 5000
+        ) {
+          finalLastMessage = recentSnippet.text;
+          finalTimestamp = recentSnippet.timestamp;
+          finalLastFromMe = true;
+          const incomingStatus: 'sent' | 'delivered' | 'read' =
+            chat.lastMessageStatus === 'read' || chat.lastMessageStatus === 'delivered' || chat.lastMessageStatus === 'sent'
+              ? chat.lastMessageStatus
+              : 'sent';
+          finalStatus =
+            chat.lastFromMe && statusRank[incomingStatus] > statusRank[recentSnippet.status]
+              ? incomingStatus
+              : recentSnippet.status;
+          effectiveUnread = 0;
+        }
+
         const enrichedChat = {
           ...chat,
+          lastMessage: finalLastMessage,
+          lastMessageTimestamp: finalTimestamp,
+          lastFromMe: finalLastFromMe,
+          lastMessageStatus: finalStatus,
           unreadCount: effectiveUnread,
         };
 
@@ -588,13 +797,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             nome: chat.pushName || chat.name || chat.phone,
             telefone: chat.phone,
             rawPhone: chat.rawPhone,
-            mensagem: chat.lastMessage || 'Conversa iniciada via WhatsApp',
-            enviadaAt: chat.lastMessageTimestamp || new Date().toISOString(),
+            mensagem: finalLastMessage || 'Conversa iniciada via WhatsApp',
+            enviadaAt: finalTimestamp || new Date().toISOString(),
             unreadCount: effectiveUnread,
             unreadMessageKeys: chat.unreadMessageKeys,
             profilePicUrl: chat.profilePicUrl,
-            lastFromMe: chat.lastFromMe,
-            lastMessageStatus: chat.lastMessageStatus,
+            lastFromMe: finalLastFromMe,
+            lastMessageStatus: finalStatus,
           });
         }
       }
@@ -662,9 +871,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
       setEditCpfError(null);
       setEditRenda(selectedLead.rendaMensal || '');
       setEditFgts(selectedLead.fgtsValor || '');
-      setEditEmpreendimento(selectedLead.empreendimentoInteresse || (empreendimentos[0]?.nome || 'A definir'));
+      setEditEmpreendimento(
+        selectedLead.empreendimentoInteresse && selectedLead.empreendimentoInteresse !== 'A definir'
+          ? selectedLead.empreendimentoInteresse
+          : ''
+      );
       const validOrigens = ['whatsapp', 'zap', 'meta', 'google', 'indicacao'];
-      setEditOrigem(validOrigens.includes(selectedLead.origemLead) ? (selectedLead.origemLead as any) : 'whatsapp');
+      setEditOrigem(validOrigens.includes(selectedLead.origemLead) ? (selectedLead.origemLead as any) : '');
       setEditStatusFunil(selectedLead.statusFunil);
       setEditObservacoes(selectedLead.observacoes || '');
     }
@@ -692,7 +905,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         cpf: editCpf.trim() || undefined,
         rendaMensal: editRenda === '' ? 0 : Number(editRenda),
         fgtsValor: editFgts === '' ? 0 : Number(editFgts),
-        empreendimentoInteresse: editEmpreendimento || selectedLead.empreendimentoInteresse,
+        empreendimentoInteresse: editEmpreendimento,
         origemLead: editOrigem,
         statusFunil: editStatusFunil,
         observacoes: editObservacoes.trim() || undefined,
@@ -844,7 +1057,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         const isCurUnlinked = unlinkedContacts.some(c => c.id === selectedLeadId);
         loadMessages(selectedLeadId, isCurUnlinked, true);
       }
-    }, 6000);
+    }, 3500);
     return () => clearInterval(interval);
   }, [isConnected, session, selectedLeadId, unlinkedContacts]);
 
@@ -974,6 +1187,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
         if (!targetPhone) return;
 
+        const nowIso = new Date().toISOString();
         const tempId = `optimistic-audio-${Date.now()}`;
         const optimisticMsg: WhatsAppMessage = {
           id: tempId,
@@ -983,11 +1197,12 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           mediaType: 'audio',
           audioUrl: base64Audio,
           audioDuration: duration,
-          timestamp: new Date().toISOString(),
-          status: 'delivered',
+          timestamp: nowIso,
+          status: 'sent',
         };
         recentSentMessagesRef.current.push({ chatKey: currentChatKey, msg: optimisticMsg, sentAt: Date.now() });
         setMessages((prev) => [...prev, optimisticMsg]);
+        updateSidebarConversationPreview(currentChatKey, '🎤 Mensagem de áudio', 'sent', nowIso);
 
         try {
           const sentMsg = await whatsappService.sendAudioMessage(
@@ -1005,14 +1220,17 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             ...optimisticMsg,
             id: sentMsg.id || tempId,
             audioUrl: base64Audio,
+            status: 'delivered',
           };
           recentSentMessagesRef.current = recentSentMessagesRef.current.map(item =>
             item.msg.id === tempId ? { ...item, msg: updatedMsg, sentAt: Date.now() } : item
           );
           setMessages((prev) => prev.map((m) => (m.id === tempId ? updatedMsg : m)));
+          updateSidebarConversationPreview(currentChatKey, '🎤 Mensagem de áudio', 'delivered', nowIso);
         } catch (err) {
           console.error('Falha ao enviar áudio:', err);
           recentSentMessagesRef.current = recentSentMessagesRef.current.filter(item => item.msg.id !== tempId);
+          delete recentChatSnippetsRef.current[currentChatKey];
           setMessages((prev) => prev.filter((m) => m.id !== tempId));
           alert('Erro ao enviar áudio.');
         }
@@ -1068,8 +1286,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         return;
       }
 
+      const nowIso = new Date().toISOString();
       const tempId = `optimistic-media-${Date.now()}`;
       const displayText = textToSend || (attachmentToSend.isImage ? '📷 Imagem' : `📄 ${attachmentToSend.fileName}`);
+      const sidebarPreview = attachmentToSend.isImage
+        ? (textToSend ? `📷 ${textToSend}` : '📷 Imagem')
+        : (textToSend ? `📄 ${textToSend}` : `📄 ${attachmentToSend.fileName}`);
+
       const optimisticMsg: WhatsAppMessage = {
         id: tempId,
         leadId: currentChatKey,
@@ -1078,11 +1301,12 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         mediaType: attachmentToSend.isImage ? 'image' : 'document',
         mediaName: attachmentToSend.fileName,
         mediaUrl: attachmentToSend.base64,
-        timestamp: new Date().toISOString(),
-        status: 'delivered',
+        timestamp: nowIso,
+        status: 'sent',
       };
       recentSentMessagesRef.current.push({ chatKey: currentChatKey, msg: optimisticMsg, sentAt: Date.now() });
       setMessages(prev => [...prev, optimisticMsg]);
+      updateSidebarConversationPreview(currentChatKey, sidebarPreview, 'sent', nowIso);
 
       try {
         const sentMsg = await whatsappService.sendMediaMessage(
@@ -1102,17 +1326,20 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           ...optimisticMsg,
           id: sentMsg.id || tempId,
           mediaUrl: attachmentToSend.base64,
+          status: 'delivered',
         };
         recentSentMessagesRef.current = recentSentMessagesRef.current.map(item =>
           item.msg.id === tempId ? { ...item, msg: updatedMsg, sentAt: Date.now() } : item
         );
         setMessages(prev => prev.map(m => (m.id === tempId ? updatedMsg : m)));
+        updateSidebarConversationPreview(currentChatKey, sidebarPreview, 'delivered', nowIso);
         if (selectedLead && onUpdateLead) {
-          onUpdateLead(selectedLead.id, { ultimaInteracaoAt: new Date().toISOString() });
+          onUpdateLead(selectedLead.id, { ultimaInteracaoAt: nowIso });
         }
       } catch (err) {
         console.error('Falha ao enviar anexo:', err);
         recentSentMessagesRef.current = recentSentMessagesRef.current.filter(item => item.msg.id !== tempId);
+        delete recentChatSnippetsRef.current[currentChatKey];
         setMessages(prev => prev.filter(m => m.id !== tempId));
         alert('Erro ao enviar arquivo anexado.');
       } finally {
@@ -1123,17 +1350,19 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
     // Handle Text Message Send
     if (isUnlinked && unlinkedContact) {
+      const nowIso = new Date().toISOString();
       const tempId = `unlinked-msg-${Date.now()}`;
       const optimisticMsg: WhatsAppMessage = {
         id: tempId,
         leadId: unlinkedContact.id,
         fromMe: true,
         text: textToSend,
-        timestamp: new Date().toISOString(),
-        status: 'delivered'
+        timestamp: nowIso,
+        status: 'sent'
       };
       recentSentMessagesRef.current.push({ chatKey: unlinkedContact.id, msg: optimisticMsg, sentAt: Date.now() });
       setMessages(prev => [...prev, optimisticMsg]);
+      updateSidebarConversationPreview(unlinkedContact.id, textToSend, 'sent', nowIso);
 
       try {
         await whatsappService.sendMessage(
@@ -1144,6 +1373,12 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           undefined,
           unlinkedContact.rawPhone || unlinkedContact.telefone
         );
+        const deliveredMsg: WhatsAppMessage = { ...optimisticMsg, status: 'delivered' };
+        recentSentMessagesRef.current = recentSentMessagesRef.current.map(item =>
+          item.msg.id === tempId ? { ...item, msg: deliveredMsg, sentAt: Date.now() } : item
+        );
+        setMessages(prev => prev.map(m => (m.id === tempId ? deliveredMsg : m)));
+        updateSidebarConversationPreview(unlinkedContact.id, textToSend, 'delivered', nowIso);
       } catch (err) {
         console.error('Falha ao enviar mensagem para contato não vinculado:', err);
       } finally {
@@ -1153,17 +1388,19 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     }
 
     if (selectedLead) {
+      const nowIso = new Date().toISOString();
       const tempId = `lead-msg-${Date.now()}`;
       const optimisticMsg: WhatsAppMessage = {
         id: tempId,
         leadId: selectedLead.id,
         fromMe: true,
         text: textToSend,
-        timestamp: new Date().toISOString(),
-        status: 'delivered'
+        timestamp: nowIso,
+        status: 'sent'
       };
       recentSentMessagesRef.current.push({ chatKey: selectedLead.id, msg: optimisticMsg, sentAt: Date.now() });
       setMessages(prev => [...prev, optimisticMsg]);
+      updateSidebarConversationPreview(selectedLead.id, textToSend, 'sent', nowIso);
 
       try {
         await whatsappService.sendMessage(
@@ -1174,8 +1411,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           undefined,
           selectedLead.telefone
         );
+        const deliveredMsg: WhatsAppMessage = { ...optimisticMsg, status: 'delivered' };
+        recentSentMessagesRef.current = recentSentMessagesRef.current.map(item =>
+          item.msg.id === tempId ? { ...item, msg: deliveredMsg, sentAt: Date.now() } : item
+        );
+        setMessages(prev => prev.map(m => (m.id === tempId ? deliveredMsg : m)));
+        updateSidebarConversationPreview(selectedLead.id, textToSend, 'delivered', nowIso);
         if (onUpdateLead) {
-          onUpdateLead(selectedLead.id, { ultimaInteracaoAt: new Date().toISOString() });
+          onUpdateLead(selectedLead.id, { ultimaInteracaoAt: nowIso });
         }
       } catch (err) {
         console.error('Falha ao enviar mensagem:', err);
@@ -1628,11 +1871,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                               )}
                               <span className="truncate">{realChat.lastMessage}</span>
                             </p>
-                          ) : (
+                          ) : lead.empreendimentoInteresse ? (
                             <div className="flex items-center gap-1 text-[11px] text-brand-600 font-medium truncate">
                               <Building2 className="w-3 h-3 flex-shrink-0" />
                               <span className="truncate">{lead.empreendimentoInteresse}</span>
                             </div>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 truncate">Sem mensagens recentes</p>
                           )}
                           {hasUnread && (
                             <span className="bg-emerald-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1.5 rounded-full flex items-center justify-center shadow-2xs flex-shrink-0">
@@ -1728,88 +1973,42 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               </div>
 
               {/* Right: Chat Actions */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {isUnlinked ? (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {isUnlinked && (
                   /* Action to generate lead for unlinked contact */
                   <button
                     onClick={() => onOpenCreateLead?.({
                       nome: unlinkedContact!.nome,
-                      telefone: unlinkedContact!.telefone,
-                      origemLead: 'whatsapp',
-                      empreendimentoInteresse: empreendimentos[0]?.nome || 'Link Itaquera'
+                      telefone: unlinkedContact!.telefone
                     })}
                     className="px-3 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
                   >
                     <UserPlus className="w-3.5 h-3.5" />
                     <span>Gerar Lead</span>
                   </button>
-                ) : (
-                  <>
-                    {/* Live Funnel Stage Selector */}
-                    <div className="relative">
-                      <select
-                        value={selectedLead!.statusFunil}
-                        onChange={(e) => onLeadStageChange && onLeadStageChange(selectedLead!.id, e.target.value as FunnelStage)}
-                        className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
-                      >
-                        <option value="novo_lead">Novo Lead</option>
-                        <option value="em_atendimento">Em Atendimento</option>
-                        <option value="visita_agendada">Visita Agendada</option>
-                        <option value="aguardando_docs">Aguardando Docs</option>
-                        <option value="analise_credito">Análise Crédito</option>
-                        <option value="proposta">Proposta</option>
-                        <option value="venda_fechada">Venda Fechada</option>
-                        <option value="descartado">Descartado</option>
-                      </select>
-                    </div>
-
-                    {/* Direct Button: Alimentar Perfil */}
-                    <button
-                      onClick={() => setShowRightDrawer(true)}
-                      title="Editar informações no perfil do lead"
-                      className="p-1.5 sm:px-2.5 sm:py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 text-brand-600" />
-                      <span className="hidden md:inline">Perfil</span>
-                    </button>
-
-                    {/* Direct Schedule Visit */}
-                    {onScheduleVisit && (
-                      <button
-                        onClick={() => onScheduleVisit(selectedLead!)}
-                        title="Agendar Visita ao Estande"
-                        className="p-1.5 sm:px-2.5 sm:py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                      >
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span className="hidden md:inline">Visita</span>
-                      </button>
-                    )}
-
-                    {/* Direct View Lead CRM / Docs */}
-                    {onSelectLeadForCRM && (
-                      <button
-                        onClick={() => onSelectLeadForCRM(selectedLead!)}
-                        title="Ver Ficha Completa e Documentos Caixa"
-                        className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                      >
-                        <FileCheck2 className="w-3.5 h-3.5" />
-                        <span className="hidden md:inline">Ficha</span>
-                      </button>
-                    )}
-                  </>
                 )}
 
                 {/* Toggle Right CRM Drawer */}
                 <button
                   onClick={() => setShowRightDrawer(prev => !prev)}
-                  title="Alternar painel de dados do lead"
-                  className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                  title={showRightDrawer ? 'Ocultar painel de perfil do lead' : 'Expandir painel de perfil do lead'}
+                  className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
                     showRightDrawer 
-                      ? 'bg-slate-800 text-white border-slate-800' 
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      ? 'bg-slate-800 text-white border-slate-800 hover:bg-slate-700' 
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
                   }`}
                 >
-                  <Info className="w-3.5 h-3.5" />
+                  {showRightDrawer ? (
+                    <>
+                      <PanelRightClose className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Ocultar Perfil</span>
+                    </>
+                  ) : (
+                    <>
+                      <PanelRightOpen className="w-3.5 h-3.5 text-brand-600" />
+                      <span className="hidden sm:inline">Ver Perfil</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -1888,9 +2087,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                           </p>
                         )}
 
-                        {/* Message Content: Audio, Image, Document, or Text */}
+                        {/* Message Content: Audio, Image, Sticker, GIF, Video, Document, or Text */}
                         {msg.mediaType === 'audio' || msg.text?.includes('🎤') ? (
                           <AudioMessagePlayer message={msg} sessionName={session} />
+                        ) : msg.mediaType === 'sticker' ? (
+                          <StickerMessageViewer message={msg} sessionName={session} />
+                        ) : msg.mediaType === 'gif' || msg.mediaType === 'video' ? (
+                          <VideoOrGifMessageViewer message={msg} sessionName={session} />
                         ) : msg.mediaType === 'image' ? (
                           <ImageMessageViewer message={msg} sessionName={session} />
                         ) : msg.mediaType === 'document' ? (
@@ -2171,9 +2374,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   type="button"
                   onClick={() => onOpenCreateLead?.({
                     nome: unlinkedContact!.nome,
-                    telefone: unlinkedContact!.telefone,
-                    origemLead: 'whatsapp',
-                    empreendimentoInteresse: empreendimentos[0]?.nome || 'Link Itaquera'
+                    telefone: unlinkedContact!.telefone
                   })}
                   className="w-full py-3 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
                 >
@@ -2300,9 +2501,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     <select
                       value={editEmpreendimento}
                       onChange={(e) => setEditEmpreendimento(e.target.value)}
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-medium focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
                     >
-                      <option value="A definir">A definir / Em qualificação</option>
+                      <option value="">Selecione um empreendimento (Opcional)</option>
                       {empreendimentos.map(emp => (
                         <option key={emp.id} value={emp.nome}>
                           {emp.construtora ? `${emp.nome} (${emp.construtora})` : emp.nome}
@@ -2311,15 +2512,16 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     </select>
                   </div>
 
-                  {/* 6. Origem do Lead & Etapa no Funil */}
+                  {/* 6. Origem do Lead & Etapa do Funil */}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
                       <label className="block font-semibold text-slate-700 mb-1">Origem do Lead</label>
                       <select
                         value={editOrigem}
                         onChange={(e) => setEditOrigem(e.target.value as any)}
-                        className="w-full p-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
                       >
+                        <option value="">Selecione a origem (Opcional)</option>
                         <option value="whatsapp">WhatsApp Direto</option>
                         <option value="zap">Portal Zap / VivaReal</option>
                         <option value="meta">Anúncio Meta (Instagram/Facebook)</option>
@@ -2329,11 +2531,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Etapa Inicial / Atual</label>
+                      <label className="block font-semibold text-slate-700 mb-1">Etapa do Funil</label>
                       <select
                         value={editStatusFunil}
                         onChange={(e) => setEditStatusFunil(e.target.value as FunnelStage)}
-                        className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
                       >
                         <option value="novo_lead">Novo Lead</option>
                         <option value="em_atendimento">Em Atendimento</option>

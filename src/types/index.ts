@@ -65,7 +65,7 @@ export interface Lead {
   fgtsAprovado: boolean;
   empreendimentoInteresse: string;
   statusFunil: FunnelStage;
-  origemLead: 'zap' | 'vivareal' | 'meta' | 'google' | 'indicacao' | 'whatsapp' | 'outro';
+  origemLead: 'zap' | 'vivareal' | 'meta' | 'google' | 'indicacao' | 'whatsapp' | 'outro' | '';
   motivoDescarte?: string;
   motivoRejeicaoCredito?: string;
   observacaoRejeicao?: string;
@@ -107,7 +107,7 @@ export interface WhatsAppMessage {
   mediaUrl?: string;
   audioUrl?: string;
   audioDuration?: number;
-  mediaType?: 'image' | 'pdf' | 'audio' | 'document';
+  mediaType?: 'image' | 'pdf' | 'audio' | 'document' | 'sticker' | 'video' | 'gif';
   mediaName?: string;
   timestamp: string;
   status: 'sent' | 'delivered' | 'read';

@@ -430,7 +430,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   <select
                     value={formData.statusFunil}
                     onChange={(e) => setFormData({ ...formData, statusFunil: e.target.value as FunnelStage })}
-                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   >
                     <option value="novo_lead">Novo Lead</option>
                     <option value="em_atendimento">Em Atendimento</option>
@@ -448,9 +448,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                   <select
                     value={formData.empreendimentoInteresse}
                     onChange={(e) => setFormData({ ...formData, empreendimentoInteresse: e.target.value })}
-                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   >
-                    <option value="A definir">A definir / Em qualificação</option>
+                    <option value="">Selecione um empreendimento (Opcional)</option>
                     {empreendimentos.map(emp => (
                       <option key={emp.id} value={emp.nome}>
                         {emp.nome} ({emp.construtora} • {emp.regiaoSp})
