@@ -21,6 +21,21 @@ export type FunnelStage =
   | 'venda_fechada'
   | 'descartado';
 
+export interface ChecklistItem {
+  id: string;
+  leadId: string;
+  codigoDoc: string;
+  titulo: string;
+  descricao?: string;
+  obrigatorio: boolean;
+  coletado: boolean;
+  statusAnalise: 'pendente' | 'em_analise' | 'aprovado' | 'rejeitado';
+  motivoRejeicao?: string;
+  arquivoUrl?: string;
+  nomeArquivo?: string;
+  updatedAt: string;
+}
+
 export interface LeadDocument {
   id: string;
   leadId: string;
@@ -47,7 +62,15 @@ export interface Lead {
   statusFunil: FunnelStage;
   origemLead: 'zap' | 'vivareal' | 'meta' | 'google' | 'indicacao' | 'whatsapp' | 'outro';
   motivoDescarte?: string;
+  motivoRejeicaoCredito?: string;
+  observacaoRejeicao?: string;
   observacoes?: string;
+  checklistProgress?: {
+    coletados: number;
+    total: number;
+    aprovados: number;
+    temRejeitado: boolean;
+  };
   createdAt: string;
   updatedAt: string;
   ultimaInteracaoAt: string;

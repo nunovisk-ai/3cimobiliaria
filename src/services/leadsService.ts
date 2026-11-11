@@ -10,7 +10,7 @@ export const leadsService = {
 
     const { data, error } = await supabase
       .from('leads')
-      .select('*')
+      .select('*, lead_checklist_items(*)')
       .order('ultima_interacao_at', { ascending: false });
 
     if (error) {
@@ -18,26 +18,41 @@ export const leadsService = {
       throw error;
     }
 
-    return (data || []).map(row => ({
-      id: row.id,
-      corretorId: row.corretor_id || '',
-      nome: row.nome,
-      telefone: row.telefone,
-      email: row.email,
-      cpf: row.cpf || '',
-      dataNascimento: row.data_nascimento || '',
-      rendaMensal: Number(row.renda_bruta_mensal) || 0,
-      fgtsValor: Number(row.fgts_saldo) || 0,
-      fgtsAprovado: Boolean(row.fgts_aprovado),
-      empreendimentoInteresse: row.empreendimento_nome || 'A definir',
-      statusFunil: row.status_funil as FunnelStage,
-      origemLead: (row.origem as any) || 'whatsapp',
-      motivoDescarte: row.motivo_descarte,
-      observacoes: row.observacoes,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      ultimaInteracaoAt: row.ultima_interacao_at || row.created_at,
-    }));
+    return (data || []).map(row => {
+      const checklist = row.lead_checklist_items || [];
+      const coletados = checklist.filter((i: any) => i.coletado).length;
+      const aprovados = checklist.filter((i: any) => i.status_analise === 'aprovado').length;
+      const temRejeitado = checklist.some((i: any) => i.status_analise === 'rejeitado');
+
+      return {
+        id: row.id,
+        corretorId: row.corretor_id || '',
+        nome: row.nome,
+        telefone: row.telefone,
+        email: row.email,
+        cpf: row.cpf || '',
+        dataNascimento: row.data_nascimento || '',
+        rendaMensal: Number(row.renda_bruta_mensal) || 0,
+        fgtsValor: Number(row.fgts_saldo) || 0,
+        fgtsAprovado: Boolean(row.fgts_aprovado),
+        empreendimentoInteresse: row.empreendimento_nome || 'A definir',
+        statusFunil: row.status_funil as FunnelStage,
+        origemLead: (row.origem as any) || 'whatsapp',
+        motivoDescarte: row.motivo_descarte,
+        motivoRejeicaoCredito: row.motivo_rejeicao_credito,
+        observacaoRejeicao: row.observacao_rejeicao,
+        observacoes: row.observacoes,
+        checklistProgress: checklist.length > 0 ? {
+          coletados,
+          total: checklist.length,
+          aprovados,
+          temRejeitado
+        } : undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        ultimaInteracaoAt: row.ultima_interacao_at || row.created_at,
+      };
+    });
   },
 
   async createLead(leadData: Partial<Lead>): Promise<Lead> {
@@ -116,6 +131,8 @@ export const leadsService = {
     if (updates.statusFunil !== undefined) payload.status_funil = updates.statusFunil;
     if (updates.observacoes !== undefined) payload.observacoes = updates.observacoes;
     if (updates.motivoDescarte !== undefined) payload.motivo_descarte = updates.motivoDescarte;
+    if (updates.motivoRejeicaoCredito !== undefined) payload.motivo_rejeicao_credito = updates.motivoRejeicaoCredito;
+    if (updates.observacaoRejeicao !== undefined) payload.observacao_rejeicao = updates.observacaoRejeicao;
     payload.ultima_interacao_at = new Date().toISOString();
 
     const { error } = await supabase

@@ -311,6 +311,33 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                           </div>
                         </div>
 
+                        {/* Document Checklist & Credit Rejection Status on Card */}
+                        {lead.checklistProgress && (
+                          <div className="mt-2 flex items-center justify-between text-[10px]">
+                            {lead.checklistProgress.temRejeitado ? (
+                              <span className="font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                                ❌ Doc Recusado
+                              </span>
+                            ) : (
+                              <span className="font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                                📑 {lead.checklistProgress.coletados}/{lead.checklistProgress.total} Docs Coletados
+                              </span>
+                            )}
+
+                            {lead.checklistProgress.aprovados > 0 && (
+                              <span className="text-emerald-600 font-semibold">
+                                ✓ {lead.checklistProgress.aprovados} Aprovados
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {lead.motivoRejeicaoCredito && (
+                          <div className="mt-2 p-1.5 bg-rose-50 border border-rose-200 rounded-lg text-[10px] text-rose-800 leading-tight">
+                            <strong>Recusa Caixa:</strong> {lead.motivoRejeicaoCredito}
+                          </div>
+                        )}
+
                         {/* Card Bottom: Quick Actions */}
                         <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
                           <button
