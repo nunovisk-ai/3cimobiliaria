@@ -147,8 +147,8 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               <Building2 className="w-4 h-4 text-brand-500" />
               <span>Progresso do Desenvolvimento do CRM</span>
             </h3>
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-              Sprint 5 / 6 Concluída
+            <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
+              🎉 6 / 6 Sprints Concluídas • Sistema Pronto
             </span>
           </div>
 
@@ -183,10 +183,10 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 rounded-2xl bg-purple-50/70 border border-purple-200/70">
-              <CheckCircle2 className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/60">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
               <div>
-                <strong className="text-purple-900 block font-semibold">Sprint 4: Agenda de Visitas & Sincronização de Calendário (Concluída)</strong>
+                <strong className="text-emerald-900 block font-semibold">Sprint 4: Agenda de Visitas & Sincronização de Calendário (Concluída)</strong>
                 <p className="text-purple-700 text-[11px] mt-0.5">
                   Controle de visitas aos estandes, integração direta com Google Agenda e Apple Calendar (.ics), WhatsApp de confirmação e baixa pós-visita com reagendamento.
                 </p>
@@ -203,14 +203,12 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               </div>
             </div>
 
-            <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
-              <div className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
-                6
-              </div>
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/60">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
               <div>
-                <strong className="text-slate-800 block font-semibold">Sprint 6: Deploy, Domínio e Ajustes Finais (Próxima)</strong>
-                <p className="text-slate-600 text-[11px] mt-0.5">
-                  Configuração do domínio grupo3c.vitrai.com.br, testes integrados de usabilidade e documentação final de operação.
+                <strong className="text-emerald-900 block font-semibold">Sprint 6: Deploy, Domínio e Ajustes Finais (Concluída)</strong>
+                <p className="text-emerald-700 text-[11px] mt-0.5">
+                  Configuração para publicação automática via GitHub Pages e Vercel, suporte ao domínio customizado grupo3c.vitrai.com.br e roteamento SPA.
                 </p>
               </div>
             </div>
