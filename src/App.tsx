@@ -11,14 +11,16 @@ import { AgendaView } from './components/agenda/AgendaView';
 import { ScheduleVisitModal } from './components/agenda/ScheduleVisitModal';
 import { WhatsAppInboxView } from './components/whatsapp/WhatsAppInboxView';
 import { WhatsAppConnectModal } from './components/whatsapp/WhatsAppConnectModal';
+import { UserManagerView } from './components/users/UserManagerView';
+import { FirstAccessModal } from './components/auth/FirstAccessModal';
 import { Lead, FunnelStage, WhatsAppInstance } from './types';
 import { leadsService } from './services/leadsService';
 import { empreendimentosService, Empreendimento } from './services/empreendimentosService';
 import { whatsappService } from './services/whatsappService';
 
 const AppContent: React.FC = () => {
-  const { user, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'empreendimentos' | 'agenda' | 'whatsapp'>('kanban');
+  const { user, isLoading: authLoading, isFirstAccess } = useAuth();
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'empreendimentos' | 'agenda' | 'whatsapp' | 'usuarios'>('kanban');
 
   // Leads state
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -210,6 +212,16 @@ const AppContent: React.FC = () => {
           onLeadStageChange={handleMoveLead}
           onOpenConnectModal={() => setIsWhatsAppModalOpen(true)}
         />
+      )}
+
+      {/* 6. GESTÃO DE USUÁRIOS & EQUIPE (Sprint 6 - Produção Admin) */}
+      {activeTab === 'usuarios' && (
+        <UserManagerView />
+      )}
+
+      {/* First Access Password Change Modal */}
+      {isFirstAccess && (
+        <FirstAccessModal />
       )}
 
       {/* Lead Detail Modal */}

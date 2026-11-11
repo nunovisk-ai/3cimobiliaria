@@ -6,6 +6,7 @@ import {
   CalendarDays, 
   MessageSquare, 
   Building2,
+  Users,
   LogOut, 
   Smartphone, 
   Bell,
@@ -30,7 +31,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   whatsappPhone,
   onOpenWhatsAppModal
 }) => {
-  const { user, logout, isManager } = useAuth();
+  const { user, logout, isManager, isAdmin } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
@@ -53,7 +54,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               />
             </button>
             <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-100 text-brand-700 border border-orange-200">
-              {isManager ? 'Gestão 3C' : 'CRM Corretor'}
+              {isAdmin ? 'Admin 3C' : isManager ? 'Gestão 3C' : 'CRM Corretor'}
             </span>
           </div>
 
@@ -118,6 +119,20 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <LayoutDashboard className="w-3.5 h-3.5" />
               <span>Visão Geral</span>
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => onTabChange('usuarios')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  activeTab === 'usuarios'
+                    ? 'bg-white text-brand-600 shadow-xs font-semibold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Usuários</span>
+              </button>
+            )}
           </nav>
 
           {/* User Profile & Actions */}
@@ -154,7 +169,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   {user?.name}
                 </p>
                 <p className="text-[10px] text-slate-500 leading-none">
-                  {user?.role === 'gerente' ? 'Gerência Comercial' : `CRECI: ${user?.creci || '241.980-F'}`}
+                  {user?.role === 'admin' ? 'Administrador Geral' : user?.role === 'gerente' ? 'Gerência Comercial' : `CRECI: ${user?.creci || '241.980-F'}`}
                 </p>
               </div>
 
@@ -230,6 +245,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <LayoutDashboard className="w-4 h-4" />
               <span>Visão Geral</span>
             </button>
+
+            {isAdmin && (
+              <button
+                onClick={() => { onTabChange('usuarios'); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold ${
+                  activeTab === 'usuarios' ? 'bg-orange-50 text-brand-600' : 'text-slate-700'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Equipe & Usuários</span>
+              </button>
+            )}
           </div>
         )}
       </header>

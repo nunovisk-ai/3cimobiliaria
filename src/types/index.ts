@@ -5,10 +5,15 @@ export interface UserProfile {
   name: string;
   email: string;
   role: UserRole;
+  cargo?: string;
   phone?: string;
   creci?: string;
   avatarUrl?: string;
   whatsappConnected?: boolean;
+  status?: 'ativo' | 'inativo';
+  primeiroAcesso?: boolean;
+  ultimoAcesso?: string | null;
+  createdAt?: string;
 }
 
 export type FunnelStage = 
