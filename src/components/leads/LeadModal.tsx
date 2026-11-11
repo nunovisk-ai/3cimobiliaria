@@ -10,7 +10,9 @@ import {
   Save,
   FileCheck2,
   User,
-  Calendar
+  Calendar,
+  UserX,
+  RotateCcw
 } from 'lucide-react';
 
 interface LeadModalProps {
@@ -99,6 +101,34 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       motivoRejeicaoCredito: motivo,
       observacaoRejeicao: obs
     });
+  };
+
+  const handleDiscard = async () => {
+    if (confirm(`Deseja mover o lead "${lead.nome}" para a coluna de Descartados?`)) {
+      setIsSaving(true);
+      try {
+        await onSave({ statusFunil: 'descartado' });
+        onClose();
+      } catch (err) {
+        console.error('Error discarding lead:', err);
+        alert('Erro ao descartar lead.');
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
+
+  const handleReactivate = async () => {
+    setIsSaving(true);
+    try {
+      await onSave({ statusFunil: 'em_atendimento' });
+      onClose();
+    } catch (err) {
+      console.error('Error reactivating lead:', err);
+      alert('Erro ao reativar lead.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -364,14 +394,14 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     onChange={(e) => setFormData({ ...formData, statusFunil: e.target.value as FunnelStage })}
                     className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   >
-                    <option value="novo_lead">📥 Novo Lead</option>
-                    <option value="em_atendimento">💬 Em Atendimento</option>
-                    <option value="visita_agendada">📅 Visita Agendada</option>
-                    <option value="aguardando_docs">📑 Aguardando Documentação</option>
-                    <option value="analise_credito">🔍 Análise de Crédito</option>
-                    <option value="proposta">📝 Proposta & Negociação</option>
-                    <option value="venda_fechada">🏆 Venda Fechada</option>
-                    <option value="descartado">❌ Descartado</option>
+                    <option value="novo_lead">Novo Lead</option>
+                    <option value="em_atendimento">Em Atendimento</option>
+                    <option value="visita_agendada">Visita Agendada</option>
+                    <option value="aguardando_docs">Aguardando Documentação</option>
+                    <option value="analise_credito">Análise de Crédito</option>
+                    <option value="proposta">Proposta & Negociação</option>
+                    <option value="venda_fechada">Venda Fechada</option>
+                    <option value="descartado">Descartado</option>
                   </select>
                 </div>
 
@@ -405,16 +435,42 @@ export const LeadModal: React.FC<LeadModalProps> = ({
               </div>
 
               {/* Footer Actions */}
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                <button
-                  type="button"
-                  disabled={isDeleting}
-                  onClick={handleDelete}
-                  className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>{isDeleting ? 'Excluindo...' : 'Excluir Lead...'}</span>
-                </button>
+              <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  {formData.statusFunil !== 'descartado' ? (
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={handleDiscard}
+                      className="px-3 py-1.5 text-xs text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Mover lead para a etapa Descartado"
+                    >
+                      <UserX className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Descartar Lead</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      onClick={handleReactivate}
+                      className="px-3 py-1.5 text-xs text-brand-700 hover:text-brand-800 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded-xl font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Reativar lead e mover para Em Atendimento"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 text-brand-600" />
+                      <span>Reativar Lead</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleDelete}
+                    className="text-xs text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1 px-2 py-1.5 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isDeleting ? 'Excluindo...' : 'Excluir Lead'}</span>
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-2">
                   <button

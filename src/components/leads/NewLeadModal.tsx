@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lead, FunnelStage } from '../../types';
 import { Empreendimento } from '../../services/empreendimentosService';
-import { X, Plus } from 'lucide-react';
+import { X, UserPlus } from 'lucide-react';
 
 interface NewLeadModalProps {
   empreendimentos: Empreendimento[];
@@ -64,9 +64,9 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
         
         {/* Header */}
         <div className="p-5 sm:px-6 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-brand-500 text-white flex items-center justify-center font-bold text-xs">
-              +
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-brand-500 text-white flex items-center justify-center shadow-xs">
+              <UserPlus className="w-4 h-4 text-white" />
             </div>
             <div>
               <h3 className="text-sm font-bold">Cadastrar Novo Lead</h3>
@@ -183,11 +183,11 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
                 onChange={(e) => setOrigemLead(e.target.value as any)}
                 className="w-full p-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               >
-                <option value="whatsapp">💬 WhatsApp Direto</option>
-                <option value="zap">🏢 Portal Zap / VivaReal</option>
-                <option value="meta">📱 Anúncio Meta (Insta/Face)</option>
-                <option value="google">🔍 Google Ads</option>
-                <option value="indicacao">🤝 Indicação de Cliente</option>
+                <option value="whatsapp">WhatsApp Direto</option>
+                <option value="zap">Portal Zap / VivaReal</option>
+                <option value="meta">Anúncio Meta (Instagram/Facebook)</option>
+                <option value="google">Google Ads</option>
+                <option value="indicacao">Indicação de Cliente</option>
               </select>
             </div>
 
@@ -198,9 +198,9 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
                 onChange={(e) => setStatusFunil(e.target.value as FunnelStage)}
                 className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-semibold text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               >
-                <option value="novo_lead">📥 Novo Lead</option>
-                <option value="em_atendimento">💬 Em Atendimento</option>
-                <option value="visita_agendada">📅 Visita Agendada</option>
+                <option value="novo_lead">Novo Lead</option>
+                <option value="em_atendimento">Em Atendimento</option>
+                <option value="visita_agendada">Visita Agendada</option>
               </select>
             </div>
           </div>
@@ -231,7 +231,7 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
               disabled={isSubmitting}
               className="px-5 py-2 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl text-xs font-semibold shadow-xs shadow-brand-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <UserPlus className="w-3.5 h-3.5" />
               <span>{isSubmitting ? 'Cadastrando...' : 'Cadastrar Lead'}</span>
             </button>
           </div>

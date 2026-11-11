@@ -169,7 +169,7 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* 2. FUNIL KANBAN DE VENDAS */}
+      {/* 2. FUNIL DE VENDAS */}
       {activeTab === 'kanban' && (
         <KanbanBoard
           leads={leads}

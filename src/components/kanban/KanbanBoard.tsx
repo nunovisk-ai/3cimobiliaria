@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { Lead, FunnelStage } from '../../types';
 import { 
   Search, 
-  Plus, 
+  UserPlus, 
   MessageSquare, 
   Building2, 
   RotateCw, 
   ArrowLeft, 
   ArrowRight,
   Clock,
-  Calendar
+  Calendar,
+  AlertTriangle,
+  FileText,
+  Check
 } from 'lucide-react';
 
 interface KanbanBoardProps {
@@ -83,7 +86,7 @@ const COLUMNS: ColumnConfig[] = [
   },
   {
     id: 'venda_fechada',
-    title: 'Venda Fechada 🏆',
+    title: 'Venda Fechada',
     color: 'border-emerald-200',
     badgeBg: 'bg-emerald-50',
     badgeText: 'text-emerald-700',
@@ -188,7 +191,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-900">Funil de Vendas do Corretor</h2>
+            <h2 className="text-lg font-bold text-slate-900">Funil de Vendas</h2>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-100 text-brand-700 border border-orange-200">
               {filteredLeads.length} {filteredLeads.length === 1 ? 'Lead' : 'Leads'}
             </span>
@@ -221,7 +224,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               onChange={(e) => setSelectedFilterEmp(e.target.value)}
               className="pl-2.5 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-700 shadow-2xs cursor-pointer"
             >
-              <option value="all">🏢 Todos Empreendimentos</option>
+              <option value="all">Todos os Empreendimentos</option>
               {uniqueEmps.map(emp => (
                 <option key={emp} value={emp}>{emp}</option>
               ))}
@@ -242,7 +245,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             onClick={onNewLead}
             className="px-3.5 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl text-xs font-semibold shadow-xs shadow-brand-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <UserPlus className="w-4 h-4" />
             <span>Novo Lead</span>
           </button>
         </div>
@@ -279,13 +282,19 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                     const next = getNextStage(lead.statusFunil);
                     const prev = getPrevStage(lead.statusFunil);
 
+                    const isDiscarded = lead.statusFunil === 'descartado';
+
                     return (
                       <div
                         key={lead.id}
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead.id)}
                         onClick={() => onSelectLead(lead)}
-                        className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-brand-300 transition-all cursor-pointer group select-none relative"
+                        className={`p-3.5 rounded-xl border transition-all cursor-pointer group select-none relative ${
+                          isDiscarded
+                            ? 'bg-slate-100/75 border-slate-200/80 opacity-55 hover:opacity-90 grayscale-[45%] hover:grayscale-0 shadow-none'
+                            : 'bg-white border-slate-200/90 shadow-2xs hover:shadow-md hover:border-brand-300'
+                        }`}
                       >
                         {/* Card Top: Origem & Data */}
                         <div className="flex items-start justify-between gap-1 mb-1.5">
@@ -328,20 +337,23 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
                         {/* Document Checklist & Credit Rejection Status on Card */}
                         {lead.checklistProgress && (
-                          <div className="mt-2 flex items-center justify-between text-[10px]">
+                          <div className="mt-2 flex items-center justify-between text-[10px] gap-1">
                             {lead.checklistProgress.temRejeitado ? (
-                              <span className="font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
-                                ❌ Doc Recusado
+                              <span className="font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 text-rose-600 flex-shrink-0" />
+                                <span>Doc Recusado</span>
                               </span>
                             ) : (
-                              <span className="font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
-                                📑 {lead.checklistProgress.coletados}/{lead.checklistProgress.total} Docs Coletados
+                              <span className="font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                <FileText className="w-3 h-3 text-slate-500 flex-shrink-0" />
+                                <span>{lead.checklistProgress.coletados}/{lead.checklistProgress.total} Docs</span>
                               </span>
                             )}
 
                             {lead.checklistProgress.aprovados > 0 && (
-                              <span className="text-emerald-600 font-semibold">
-                                ✓ {lead.checklistProgress.aprovados} Aprovados
+                              <span className="text-emerald-600 font-semibold flex items-center gap-0.5">
+                                <Check className="w-3 h-3 flex-shrink-0" />
+                                <span>{lead.checklistProgress.aprovados} Aprovados</span>
                               </span>
                             )}
                           </div>

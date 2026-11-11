@@ -16,7 +16,8 @@ import {
   Info, 
   ChevronRight,
   Wifi,
-  WifiOff
+  WifiOff,
+  MessageSquare
 } from 'lucide-react';
 
 interface WhatsAppInboxViewProps {
@@ -36,7 +37,7 @@ const STAGE_CONFIG: Record<FunnelStage, { label: string; color: string; badge: s
   aguardando_docs: { label: 'Aguardando Docs', color: 'border-amber-300 text-amber-700', badge: 'bg-amber-100 text-amber-800' },
   analise_credito: { label: 'Análise Crédito', color: 'border-cyan-300 text-cyan-700', badge: 'bg-cyan-100 text-cyan-800' },
   proposta: { label: 'Proposta', color: 'border-indigo-300 text-indigo-700', badge: 'bg-indigo-100 text-indigo-800' },
-  venda_fechada: { label: 'Venda Fechada 🏆', color: 'border-emerald-300 text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
+  venda_fechada: { label: 'Venda Fechada', color: 'border-emerald-300 text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
   descartado: { label: 'Descartado', color: 'border-slate-300 text-slate-700', badge: 'bg-slate-100 text-slate-800' },
 };
 
@@ -182,7 +183,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                  💬
+                  <MessageSquare className="w-3.5 h-3.5 text-white" />
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">Conversas WhatsApp</h3>
               </div>
@@ -372,14 +373,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     onChange={(e) => onLeadStageChange && onLeadStageChange(selectedLead.id, e.target.value as FunnelStage)}
                     className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
                   >
-                    <option value="novo_lead">🔵 Novo Lead</option>
-                    <option value="em_atendimento">🟠 Em Atendimento</option>
-                    <option value="visita_agendada">🟣 Visita Agendada</option>
-                    <option value="aguardando_docs">🟡 Aguardando Docs</option>
-                    <option value="analise_credito">💠 Análise de Crédito</option>
-                    <option value="proposta">🟣 Proposta</option>
-                    <option value="venda_fechada">🟢 Venda Fechada 🏆</option>
-                    <option value="descartado">⚪ Descartado</option>
+                    <option value="novo_lead">Novo Lead</option>
+                    <option value="em_atendimento">Em Atendimento</option>
+                    <option value="visita_agendada">Visita Agendada</option>
+                    <option value="aguardando_docs">Aguardando Documentação</option>
+                    <option value="analise_credito">Análise de Crédito</option>
+                    <option value="proposta">Proposta & Negociação</option>
+                    <option value="venda_fechada">Venda Fechada</option>
+                    <option value="descartado">Descartado</option>
                   </select>
                 </div>
 
@@ -546,8 +547,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 text-slate-400">
-            <div className="w-16 h-16 rounded-3xl bg-slate-100 flex items-center justify-center text-3xl mb-3">
-              💬
+            <div className="w-16 h-16 rounded-3xl bg-slate-100 flex items-center justify-center mb-3 text-slate-400">
+              <MessageSquare className="w-8 h-8 text-slate-400" />
             </div>
             <h4 className="text-base font-bold text-slate-700">Selecione uma conversa</h4>
             <p className="text-xs max-w-sm mt-1">

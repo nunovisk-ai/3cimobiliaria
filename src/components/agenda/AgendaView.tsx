@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Building2,
   CalendarDays,
+  Calendar,
   Check
 } from 'lucide-react';
 
@@ -119,7 +120,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
         <div>
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-              📅
+              <Calendar className="w-5 h-5 text-purple-700" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-900">Agenda de Visitas ao Plantão</h2>
@@ -242,13 +243,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
           <button
             onClick={() => setActiveTab('proximas')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
               activeTab === 'proximas'
                 ? 'bg-purple-600 text-white'
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            📅 Próximas ({proximasVisitas.length})
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Próximas ({proximasVisitas.length})</span>
           </button>
 
           <button
@@ -322,7 +324,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
               onChange={(e) => setSelectedFilterEmp(e.target.value)}
               className="pl-2.5 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 text-slate-700 cursor-pointer"
             >
-              <option value="all">🏢 Todos Estandes</option>
+              <option value="all">Todos os Estandes</option>
               {empreendimentos.map(emp => (
                 <option key={emp.id} value={emp.nome}>{emp.nome}</option>
               ))}
@@ -504,7 +506,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                       title="Adicionar à Google Agenda"
                       className="p-2 bg-white hover:bg-purple-50 text-slate-600 hover:text-purple-700 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                     >
-                      <span className="text-xs">📅</span>
+                      <Calendar className="w-3.5 h-3.5 text-purple-600" />
                       <span className="hidden lg:inline text-[11px]">Google</span>
                     </a>
 
@@ -514,7 +516,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                       title="Baixar evento para Apple Calendar / iCloud (.ics)"
                       className="p-2 bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 border border-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                     >
-                      <span className="text-xs">🍏</span>
+                      <Calendar className="w-3.5 h-3.5 text-indigo-600" />
                       <span className="hidden lg:inline text-[11px]">Apple</span>
                       <Download className="w-3 h-3 text-slate-400" />
                     </button>
@@ -551,8 +553,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
         {/* Empty State */}
         {filteredVisits.length === 0 && (
           <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-4">
-            <div className="w-16 h-16 rounded-3xl bg-purple-50 text-purple-600 flex items-center justify-center text-3xl mx-auto">
-              📅
+            <div className="w-16 h-16 rounded-3xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
+              <Calendar className="w-8 h-8 text-purple-600" />
             </div>
             <div>
               <h4 className="text-base font-bold text-slate-800">

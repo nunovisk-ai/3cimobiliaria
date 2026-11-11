@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  Columns3, 
+  Filter, 
   Users, 
   Calendar, 
   MessageSquare, 
@@ -54,8 +54,8 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               onClick={onGoToKanban}
               className="py-2.5 px-4 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold rounded-xl text-xs shadow-md shadow-brand-500/20 flex items-center gap-2 transition-all cursor-pointer"
             >
-              <Columns3 className="w-4 h-4" />
-              <span>Acessar Funil Kanban</span>
+              <Filter className="w-4 h-4" />
+              <span>Acessar Funil de Vendas</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
 
@@ -147,8 +147,9 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               <Building2 className="w-4 h-4 text-brand-500" />
               <span>Progresso do Desenvolvimento do CRM</span>
             </h3>
-            <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
-              🎉 6 / 6 Sprints Concluídas • Sistema Pronto
+            <span className="text-xs font-bold text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>6 / 6 Sprints Concluídas • Sistema Pronto</span>
             </span>
           </div>
 
@@ -166,9 +167,9 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
             <div className="flex items-start gap-3 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/60">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
               <div>
-                <strong className="text-emerald-900 block font-semibold">Sprint 2: Funil Kanban & Catálogo de Empreendimentos (Concluída)</strong>
+                <strong className="text-emerald-900 block font-semibold">Sprint 2: Funil de Vendas & Catálogo de Empreendimentos (Concluída)</strong>
                 <p className="text-emerald-700 text-[11px] mt-0.5">
-                  Quadro Kanban com 8 colunas imobiliárias, drag-and-drop, simulação Caixa MCMV e catálogo com 7 lançamentos reais do Grupo 3C.
+                  Quadro de vendas visual com 8 colunas imobiliárias, drag-and-drop, simulação Caixa MCMV e catálogo com 7 lançamentos reais do Grupo 3C.
                 </p>
               </div>
             </div>

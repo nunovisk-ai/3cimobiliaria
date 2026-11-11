@@ -212,27 +212,27 @@ export const whatsappService = {
     return [
       {
         id: 'apresentacao',
-        titulo: '🏢 Apresentação do Projeto',
+        titulo: 'Apresentação do Projeto',
         texto: `Olá ${nome}! Tudo bem? Sou da equipe do *Grupo 3C Imobiliária*. Estou entrando em contato sobre o *${emp}*! Temos condições exclusivas pelo programa Minha Casa Minha Vida com subsídio e entrada parcelada direto com a construtora. Gostaria de receber o book de fotos e plantas no seu WhatsApp?`,
       },
       {
         id: 'docs_caixa',
-        titulo: '📑 Lista de Docs Caixa',
+        titulo: 'Lista de Docs Caixa',
         texto: `Olá ${nome}! Para fazermos a sua análise de crédito com a Caixa Econômica Federal e garantir a taxa de juros mais baixa do mercado, precisamos dos seguintes documentos básicos:\n\n1. RG ou CNH (frente e verso)\n2. Comprovante de Residência recente (últimos 60 dias)\n3. 3 últimos Holerites\n4. Extrato do FGTS com saldo\n5. Certidão de Estado Civil (Nascimento ou Casamento)\n6. Declaração do Imposto de Renda (se declarar)\n\nPode me enviar por foto ou PDF aqui mesmo pelo WhatsApp! 👍`,
       },
       {
         id: 'visita',
-        titulo: '📅 Convite / Confirmação de Visita',
+        titulo: 'Convite / Confirmação de Visita',
         texto: `Olá ${nome}! O que acha de darmos um pulo no plantão do *${emp}* para você conhecer o apartamento decorado em tamanho real e tirar todas as dúvidas? Posso agendar para você amanhã ou no próximo sábado! Qual horário fica melhor para você?`,
       },
       {
         id: 'simulacao',
-        titulo: '💰 Simulação de Financiamento',
+        titulo: 'Simulação de Financiamento',
         texto: `Olá ${nome}! Fizemos um estudo prévio do seu perfil com base na sua renda: sua parcela máxima estimada pelo Minha Casa Minha Vida fica em torno de *${parcela}* mensais! E podemos usar o seu saldo de FGTS para abater a entrada. Ficou com alguma dúvida sobre o fluxo?`,
       },
       {
         id: 'localizacao',
-        titulo: '📍 Localização do Plantão',
+        titulo: 'Localização do Plantão',
         texto: `Segue o endereço do nosso plantão de vendas do *${emp}*! Temos estacionamento no local e atendimento com café e maquete completa. Quando estiver a caminho, me avise para eu te recepcionar na portaria! 🏢✨`,
       }
     ];

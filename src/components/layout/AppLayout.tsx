@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
   LayoutDashboard, 
-  Columns3, 
+  Filter, 
   CalendarDays, 
   MessageSquare, 
   Building2,
@@ -13,8 +13,7 @@ import {
   Menu,
   X,
   ChevronLeft,
-  ChevronRight,
-  ExternalLink
+  ChevronRight
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -40,7 +39,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   // Tab labels for top header breadcrumb
   const tabTitles: Record<string, { title: string; subtitle: string }> = {
-    kanban: { title: 'Funil de Vendas Kanban', subtitle: 'Gestão visual de negociações e leads' },
+    kanban: { title: 'Funil de Vendas', subtitle: 'Gestão visual de negociações e leads' },
     empreendimentos: { title: 'Catálogo de Empreendimentos', subtitle: 'Lançamentos e unidades disponíveis' },
     agenda: { title: 'Agenda de Visitas', subtitle: 'Agendamentos e confirmações de plantão' },
     whatsapp: { title: 'WhatsApp Inbox Espelhada', subtitle: 'Conversas e atendimento em tempo real' },
@@ -109,18 +108,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               </p>
             )}
 
-            {/* Funil Kanban */}
+            {/* Funil de Vendas */}
             <button
               onClick={() => onTabChange('kanban')}
-              title={isCollapsed ? 'Funil Kanban' : undefined}
+              title={isCollapsed ? 'Funil de Vendas' : undefined}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'kanban'
                   ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
             >
-              <Columns3 className="w-4 h-4 flex-shrink-0" />
-              {!isCollapsed && <span>Funil Kanban</span>}
+              <Filter className="w-4 h-4 flex-shrink-0" />
+              {!isCollapsed && <span>Funil de Vendas</span>}
             </button>
 
             {/* Empreendimentos */}
@@ -337,17 +336,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full" />
             </button>
 
-            {/* Quick Link to Portal 3C */}
-            <a
-              href="https://www.3cimobiliaria.com.br"
-              target="_blank"
-              rel="noreferrer"
-              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 hover:text-brand-600 bg-slate-50 hover:bg-orange-50 border border-slate-200/80 rounded-xl font-medium transition-colors"
-            >
-              <span>Site 3C</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-
             {/* Desktop User Initials Pill */}
             <div className="hidden sm:flex items-center gap-2 pl-2 border-l border-slate-200">
               <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-brand-600 to-amber-500 text-white flex items-center justify-center font-heading font-bold text-xs shadow-2xs">
@@ -418,8 +406,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     activeTab === 'kanban' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <Columns3 className="w-4 h-4" />
-                  <span>Funil Kanban</span>
+                  <Filter className="w-4 h-4" />
+                  <span>Funil de Vendas</span>
                 </button>
 
                 <button

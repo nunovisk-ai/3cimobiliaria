@@ -309,10 +309,10 @@ export const LeadChecklistSection: React.FC<LeadChecklistSectionProps> = ({
                       : 'bg-slate-50 text-slate-600 border-slate-200'
                   }`}
                 >
-                  <option value="pendente">⏳ Pendente Coleta</option>
-                  <option value="em_analise">🔍 Em Análise Caixa</option>
-                  <option value="aprovado">✅ Aprovado Caixa</option>
-                  <option value="rejeitado">❌ Rejeitado / Pendência</option>
+                  <option value="pendente">Pendente Coleta</option>
+                  <option value="em_analise">Em Análise Caixa</option>
+                  <option value="aprovado">Aprovado Caixa</option>
+                  <option value="rejeitado">Rejeitado / Pendência</option>
                 </select>
 
                 {/* Optional File Upload button */}

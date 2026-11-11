@@ -134,7 +134,7 @@ export const ScheduleVisitModal: React.FC<ScheduleVisitModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold">
-                {createdVisit ? 'Visita Agendada com Sucesso! 🎉' : 'Agendar Visita ao Plantão'}
+                {createdVisit ? 'Visita Agendada com Sucesso!' : 'Agendar Visita ao Plantão'}
               </h3>
               <p className="text-xs text-purple-200">
                 {createdVisit ? 'Sincronize com a sua agenda ou envie confirmação no WhatsApp' : 'Reserve o horário no estande para apresentar o decorado'}
@@ -184,7 +184,7 @@ export const ScheduleVisitModal: React.FC<ScheduleVisitModalProps> = ({
                   className="p-3 rounded-2xl border border-slate-200 bg-white hover:border-purple-300 hover:bg-purple-50/50 flex flex-col items-center justify-center gap-1.5 text-center transition-all group cursor-pointer"
                 >
                   <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs">
-                    📅
+                    <Calendar className="w-4 h-4 text-purple-700" />
                   </div>
                   <span className="text-xs font-bold text-slate-800 group-hover:text-purple-700 flex items-center gap-1">
                     Google Agenda <ExternalLink className="w-3 h-3 text-slate-400" />
@@ -198,7 +198,7 @@ export const ScheduleVisitModal: React.FC<ScheduleVisitModalProps> = ({
                   className="p-3 rounded-2xl border border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50 flex flex-col items-center justify-center gap-1.5 text-center transition-all group cursor-pointer"
                 >
                   <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
-                    🍏
+                    <Calendar className="w-4 h-4 text-indigo-700" />
                   </div>
                   <span className="text-xs font-bold text-slate-800 group-hover:text-indigo-700 flex items-center gap-1">
                     Apple Calendar <Download className="w-3 h-3 text-slate-400" />
