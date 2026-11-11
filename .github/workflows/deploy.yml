@@ -37,6 +37,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://pktlcipbprqvzkeouyfq.supabase.co' }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || 'sb_publishable_RXWTBxE1k-r1maoifyUAtw_y7VfmlTJ' }}
+          VITE_EVOLUTION_API_URL: ${{ secrets.VITE_EVOLUTION_API_URL || 'https://evolution.vitrai.com.br' }}
+          VITE_EVOLUTION_API_KEY: ${{ secrets.VITE_EVOLUTION_API_KEY || '3c_evolution_secret_994821' }}
         run: npm run build
 
       # Deploy to gh-pages branch (ensures branch-based deployment works 100%)

@@ -49,6 +49,18 @@ const STAGE_CONFIG: Record<FunnelStage, { label: string; color: string; badge: s
   descartado: { label: 'Descartado', color: 'border-slate-300 text-slate-700', badge: 'bg-slate-100 text-slate-800' },
 };
 
+interface UnlinkedContact {
+  id: string; // remoteJid
+  remoteJid: string;
+  nome: string;
+  telefone: string;
+  rawPhone: string;
+  mensagem: string;
+  enviadaAt: string;
+  unreadCount?: number;
+  profilePicUrl?: string;
+}
+
 export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   leads,
   initialSelectedLeadId,
@@ -61,19 +73,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   onOpenCreateLead,
   onUpdateLead
 }) => {
-  // Sample unlinked incoming WhatsApp contacts without a lead in the pipeline
-  const [unlinkedContacts] = useState([
-    {
-      id: 'unlinked-marcos',
-      nome: 'Marcos Paulo Silva',
-      telefone: '(11) 98112-4433',
-      mensagem: 'Olá! Vi o anúncio no Instagram do empreendimento em Itaquera. Tem unidades com 2 dormitórios disponíveis?',
-      enviadaAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
-    }
-  ]);
+  const isConnected = instance?.status === 'connected';
+  const session = instance?.sessionName || '3c_vendedor';
+
+  const [unlinkedContacts, setUnlinkedContacts] = useState<UnlinkedContact[]>([]);
+  const [realChatMap, setRealChatMap] = useState<Map<string, any>>(new Map());
 
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(
-    initialSelectedLeadId || (leads[0]?.id || unlinkedContacts[0]?.id || null)
+    initialSelectedLeadId || (leads[0]?.id || null)
   );
   const [searchTerm, setSearchTerm] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
@@ -97,7 +104,56 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const selectedLead = leads.find(l => l.id === selectedLeadId) || null;
   const unlinkedContact = unlinkedContacts.find(c => c.id === selectedLeadId) || null;
   const isUnlinked = Boolean(unlinkedContact && !selectedLead);
-  const isConnected = instance?.status === 'connected';
+
+  // Load real chats from Evolution API
+  const loadChats = async () => {
+    if (!isConnected) {
+      setUnlinkedContacts([]);
+      setRealChatMap(new Map());
+      return;
+    }
+
+    try {
+      const chats = await whatsappService.getRealChats(session);
+      const unlinkedList: UnlinkedContact[] = [];
+      const chatMap = new Map<string, any>();
+
+      for (const chat of chats) {
+        const cleanChatDigits = (chat.rawPhone || '').replace(/\D/g, '');
+        const matchedLead = leads.find(l => {
+          const leadDigits = (l.telefone || '').replace(/\D/g, '');
+          return leadDigits.slice(-8) === cleanChatDigits.slice(-8);
+        });
+
+        if (matchedLead) {
+          chatMap.set(matchedLead.id, chat);
+        } else {
+          unlinkedList.push({
+            id: chat.remoteJid,
+            remoteJid: chat.remoteJid,
+            nome: chat.pushName || chat.name || chat.phone,
+            telefone: chat.phone,
+            rawPhone: chat.rawPhone,
+            mensagem: chat.lastMessage || 'Conversa iniciada via WhatsApp',
+            enviadaAt: chat.lastMessageTimestamp || new Date().toISOString(),
+            unreadCount: chat.unreadCount,
+            profilePicUrl: chat.profilePicUrl,
+          });
+        }
+      }
+
+      setRealChatMap(chatMap);
+      setUnlinkedContacts(unlinkedList);
+
+      // Auto-select first contact if none selected
+      if (!selectedLeadId) {
+        if (leads.length > 0) setSelectedLeadId(leads[0].id);
+        else if (unlinkedList.length > 0) setSelectedLeadId(unlinkedList[0].id);
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar chats reais:', err);
+    }
+  };
 
   // Sync edit form state when selectedLead changes
   useEffect(() => {
@@ -132,34 +188,66 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   };
 
   // Load messages whenever selected lead changes
-  const loadMessages = async (leadId: string) => {
-    setIsLoadingMessages(true);
+  const loadMessages = async (leadIdOrJid: string, isContactUnlinked: boolean = false, isSilent: boolean = false) => {
+    if (!isSilent) setIsLoadingMessages(true);
     try {
-      const msgs = await whatsappService.getMessages(leadId);
-      setMessages(msgs);
+      let remoteJid = leadIdOrJid;
+      let leadId: string | undefined = undefined;
+
+      if (!isContactUnlinked) {
+        const lead = leads.find(l => l.id === leadIdOrJid);
+        if (lead) {
+          leadId = lead.id;
+          const realChat = realChatMap.get(lead.id);
+          if (realChat?.remoteJid) {
+            remoteJid = realChat.remoteJid;
+          } else {
+            const clean = lead.telefone.replace(/\D/g, '');
+            const ddi = clean.startsWith('55') ? clean : `55${clean}`;
+            remoteJid = `${ddi}@s.whatsapp.net`;
+          }
+        }
+      }
+
+      if (isConnected) {
+        const msgs = await whatsappService.getRealMessages(session, remoteJid, leadId);
+        setMessages(msgs);
+      } else if (leadId) {
+        const msgs = await whatsappService.getMessages(leadId);
+        setMessages(msgs);
+      } else {
+        setMessages([]);
+      }
     } catch (err) {
       console.error('Falha ao carregar mensagens:', err);
     } finally {
-      setIsLoadingMessages(false);
+      if (!isSilent) setIsLoadingMessages(false);
     }
   };
 
+  // Initial load and periodic synchronization (mirroring)
   useEffect(() => {
-    if (unlinkedContact) {
-      setMessages([
-        {
-          id: 'unlinked-msg-1',
-          leadId: unlinkedContact.id,
-          fromMe: false,
-          text: unlinkedContact.mensagem,
-          timestamp: unlinkedContact.enviadaAt,
-          status: 'read'
-        }
-      ]);
-    } else if (selectedLeadId) {
-      loadMessages(selectedLeadId);
+    loadChats();
+  }, [isConnected, session, leads]);
+
+  useEffect(() => {
+    if (!isConnected) return;
+    const interval = setInterval(() => {
+      loadChats();
+      if (selectedLeadId) {
+        const isCurUnlinked = unlinkedContacts.some(c => c.id === selectedLeadId);
+        loadMessages(selectedLeadId, isCurUnlinked, true);
+      }
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [isConnected, session, selectedLeadId, unlinkedContacts]);
+
+  useEffect(() => {
+    if (selectedLeadId) {
+      const isCurUnlinked = unlinkedContacts.some(c => c.id === selectedLeadId);
+      loadMessages(selectedLeadId, isCurUnlinked, false);
     }
-  }, [selectedLeadId, unlinkedContact]);
+  }, [selectedLeadId]);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -175,31 +263,64 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     setInputText('');
     setIsSending(true);
 
-    if (isUnlinked) {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `unlinked-msg-${Date.now()}`,
-          leadId: selectedLeadId!,
-          fromMe: true,
-          text: textToSend,
-          timestamp: new Date().toISOString(),
-          status: 'delivered'
-        }
-      ]);
-      setIsSending(false);
+    if (isUnlinked && unlinkedContact) {
+      const optimisticMsg: WhatsAppMessage = {
+        id: `unlinked-msg-${Date.now()}`,
+        leadId: unlinkedContact.id,
+        fromMe: true,
+        text: textToSend,
+        timestamp: new Date().toISOString(),
+        status: 'delivered'
+      };
+      setMessages(prev => [...prev, optimisticMsg]);
+
+      try {
+        await whatsappService.sendMessage(
+          unlinkedContact.remoteJid,
+          textToSend,
+          session,
+          undefined,
+          undefined,
+          unlinkedContact.telefone
+        );
+      } catch (err) {
+        console.error('Falha ao enviar mensagem para contato não vinculado:', err);
+      } finally {
+        setIsSending(false);
+      }
       return;
     }
 
-    try {
-      const newMsg = await whatsappService.sendMessage(selectedLeadId, textToSend);
-      setMessages(prev => [...prev, newMsg]);
-    } catch (err) {
-      console.error('Falha ao enviar mensagem:', err);
-      alert('Erro ao enviar mensagem.');
-      setInputText(textToSend); // restore
-    } finally {
-      setIsSending(false);
+    if (selectedLead) {
+      const optimisticMsg: WhatsAppMessage = {
+        id: `lead-msg-${Date.now()}`,
+        leadId: selectedLead.id,
+        fromMe: true,
+        text: textToSend,
+        timestamp: new Date().toISOString(),
+        status: 'delivered'
+      };
+      setMessages(prev => [...prev, optimisticMsg]);
+
+      try {
+        await whatsappService.sendMessage(
+          selectedLead.id,
+          textToSend,
+          session,
+          selectedLead.corretorId,
+          undefined,
+          selectedLead.telefone
+        );
+        if (onUpdateLead) {
+          onUpdateLead(selectedLead.id, { ultimaInteracaoAt: new Date().toISOString() });
+        }
+      } catch (err) {
+        console.error('Falha ao enviar mensagem:', err);
+        alert('Erro ao enviar mensagem.');
+        setInputText(textToSend); // restore
+      } finally {
+        setIsSending(false);
+      }
     }
   };
 
@@ -387,10 +508,18 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   }`}
                 >
                   <div className="relative">
-                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
-                      {contact.nome.slice(0, 2).toUpperCase()}
-                    </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white absolute -bottom-0.5 -right-0.5" />
+                    {contact.profilePicUrl ? (
+                      <img 
+                        src={contact.profilePicUrl} 
+                        alt={contact.nome} 
+                        className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
+                        {contact.nome.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
                   </div>
 
                   <div className="flex-1 min-w-0 space-y-1">
@@ -399,7 +528,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         {contact.nome}
                       </h4>
                       <span className="text-[10px] text-amber-600 font-semibold">
-                        Hoje
+                        {contact.enviadaAt ? new Date(contact.enviadaAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Hoje'}
                       </span>
                     </div>
 
@@ -423,6 +552,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             {stageFilter !== 'sem_lead' && filteredLeads.map(lead => {
               const isSelected = lead.id === selectedLeadId;
               const stageConf = STAGE_CONFIG[lead.statusFunil] || STAGE_CONFIG.novo_lead;
+              const realChat = realChatMap.get(lead.id);
 
               return (
                 <div
@@ -439,7 +569,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
                       {lead.nome.slice(0, 2).toUpperCase()}
                     </div>
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
+                    {realChat ? (
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" title="WhatsApp Ativo" />
+                    ) : (
+                      <span className="w-2.5 h-2.5 rounded-full bg-slate-300 border-2 border-white absolute -bottom-0.5 -right-0.5" />
+                    )}
                   </div>
 
                   {/* Info Column */}
@@ -449,15 +583,23 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         {lead.nome}
                       </h4>
                       <span className="text-[10px] text-slate-400">
-                        {new Date(lead.ultimaInteracaoAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                        {realChat?.lastMessageTimestamp 
+                          ? new Date(realChat.lastMessageTimestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                          : new Date(lead.ultimaInteracaoAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                       </span>
                     </div>
 
-                    {/* Empreendimento */}
-                    <div className="flex items-center gap-1 text-[11px] text-brand-600 font-medium">
-                      <Building2 className="w-3 h-3 flex-shrink-0" />
-                      <span className="truncate">{lead.empreendimentoInteresse}</span>
-                    </div>
+                    {/* Empreendimento or Last WhatsApp Message */}
+                    {realChat?.lastMessage ? (
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {realChat.lastMessage}
+                      </p>
+                    ) : (
+                      <div className="flex items-center gap-1 text-[11px] text-brand-600 font-medium">
+                        <Building2 className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{lead.empreendimentoInteresse}</span>
+                      </div>
+                    )}
 
                     {/* Stage Badge & Phone */}
                     <div className="flex items-center justify-between pt-0.5">

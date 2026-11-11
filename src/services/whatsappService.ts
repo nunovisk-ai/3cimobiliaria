@@ -51,6 +51,9 @@ export const whatsappService = {
       const cleanPhone = phoneNumber.replace(/\D/g, '');
       const ddiPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
       const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${sessionName}`, {
         method: 'POST',
         headers: {
@@ -63,13 +66,220 @@ export const whatsappService = {
           delay: 1200, // Anti-ban emulation: mimics human typing
           linkPreview: true,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       return res.ok;
     } catch (err) {
       console.warn('Error sending message via Evolution API:', err);
       return false;
     }
   },
+
+  /**
+   * Fetches the real connected phone number from Evolution API for the session
+   */
+  async getConnectedPhone(sessionName: string): Promise<string | null> {
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, {
+        headers: { apikey: EVOLUTION_API_KEY },
+      });
+      if (res.ok) {
+        const list = await res.json();
+        const target = Array.isArray(list) ? list.find((i: any) => i.name === sessionName) : list;
+        if (target?.ownerJid || target?.number) {
+          const raw = (target.ownerJid || target.number || '').split('@')[0].replace(/\D/g, '');
+          if (raw) {
+            const clean = raw.startsWith('55') ? raw.slice(2) : raw;
+            const ddd = clean.slice(0, 2);
+            const num = clean.slice(2);
+            return num.length === 9 
+              ? `(${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`
+              : `(${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching connected phone from Evolution API:', e);
+    }
+    return null;
+  },
+  /**
+   * Automatically ensures the broker's isolated instance exists on Evolution API with anti-ban protections
+   */
+  async ensureInstance(sessionName: string): Promise<void> {
+    try {
+      const checkRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${sessionName}`, {
+        headers: { apikey: EVOLUTION_API_KEY },
+      });
+      if (checkRes.status === 404) {
+        await fetch(`${EVOLUTION_API_URL}/instance/create`, {
+          method: 'POST',
+          headers: {
+            'apikey': EVOLUTION_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            instanceName: sessionName,
+            integration: 'WHATSAPP-BAILEYS',
+            qrcode: true,
+          }),
+        });
+
+        await fetch(`${EVOLUTION_API_URL}/settings/set/${sessionName}`, {
+          method: 'POST',
+          headers: {
+            'apikey': EVOLUTION_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            rejectCall: true,
+            msgCall: 'Grupo 3C: Atendimento por mensagem.',
+            groupsIgnore: true,
+            alwaysOnline: false,
+            readMessages: true,
+            readStatus: false,
+            syncFullHistory: false,
+          }),
+        });
+      }
+    } catch (err) {
+      console.warn('Error ensuring Evolution instance:', err);
+    }
+  },
+
+  /**
+   * Fetches real WhatsApp chats from Evolution API for the broker's session
+   */
+  async getRealChats(sessionName: string = '3c_vendedor'): Promise<any[]> {
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/chat/findChats/${sessionName}`, {
+        method: 'POST',
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) return [];
+      const chats = await res.json();
+      if (!Array.isArray(chats)) return [];
+
+      // Filter out WhatsApp groups (@g.us) to keep only customer leads (anti-spam)
+      return chats
+        .filter((c: any) => c.remoteJid && !c.remoteJid.includes('@g.us') && !c.remoteJid.includes('status@broadcast'))
+        .map((c: any) => {
+          const rawPhone = c.remoteJid.split('@')[0];
+          let phoneClean = rawPhone.replace(/\D/g, '');
+          if (phoneClean.startsWith('55') && phoneClean.length >= 12) {
+            phoneClean = phoneClean.slice(2);
+          }
+          const ddd = phoneClean.slice(0, 2);
+          const num = phoneClean.slice(2);
+          const formattedPhone = num.length === 9 
+            ? `(${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`
+            : `(${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
+
+          let lastMsg = '';
+          const lastTime = c.updatedAt || new Date().toISOString();
+
+          if (c.lastMessage?.message) {
+            const m = c.lastMessage.message;
+            lastMsg = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || (m.audioMessage ? '🎤 Áudio' : 'Mensagem');
+          }
+
+          return {
+            id: c.remoteJid,
+            remoteJid: c.remoteJid,
+            name: c.pushName || c.name || formattedPhone,
+            pushName: c.pushName,
+            phone: formattedPhone,
+            rawPhone,
+            unreadCount: c.unreadCount || 0,
+            profilePicUrl: c.profilePicUrl,
+            lastMessage: lastMsg,
+            lastMessageTimestamp: lastTime,
+          };
+        });
+    } catch (err) {
+      console.warn('Could not fetch real chats from Evolution API:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Fetches real messages for a specific WhatsApp chat
+   */
+  async getRealMessages(sessionName: string, remoteJid: string, leadId?: string): Promise<WhatsAppMessage[]> {
+    let evolutionMsgs: WhatsAppMessage[] = [];
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${sessionName}`, {
+        method: 'POST',
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          where: {
+            key: {
+              remoteJid: remoteJid,
+            },
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const records = data.messages?.records || (Array.isArray(data) ? data : []);
+        evolutionMsgs = records.map((m: any) => {
+          const msgObj = m.message || {};
+          const text = msgObj.conversation || 
+                       msgObj.extendedTextMessage?.text || 
+                       msgObj.imageMessage?.caption || 
+                       (msgObj.audioMessage ? '🎤 Mensagem de áudio' : '') ||
+                       (msgObj.imageMessage ? '📷 Imagem' : '') ||
+                       (msgObj.documentMessage ? '📄 Documento' : '') ||
+                       '';
+          return {
+            id: m.key?.id || m.id || String(Math.random()),
+            leadId: leadId || remoteJid,
+            fromMe: Boolean(m.key?.fromMe),
+            text: text,
+            timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
+            status: m.status === 'READ' ? 'read' : 'delivered',
+          };
+        }).filter((m: any) => m.text);
+      }
+    } catch (err) {
+      console.warn('Could not fetch messages from Evolution API:', err);
+    }
+
+    // Also get Supabase messages for leadId if present
+    let supabaseMsgs: WhatsAppMessage[] = [];
+    if (leadId) {
+      try {
+        supabaseMsgs = await this.getMessages(leadId);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Merge and deduplicate by id or text+fromMe
+    const combined = [...evolutionMsgs, ...supabaseMsgs];
+    const seen = new Set<string>();
+    const unique: WhatsAppMessage[] = [];
+    for (const msg of combined) {
+      const key = msg.id || `${msg.fromMe}_${msg.text}_${msg.timestamp.slice(0, 16)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(msg);
+      }
+    }
+
+    unique.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    return unique;
+  },
+
   /**
    * Fetches all messages for a specific lead, ordered chronologically
    */
@@ -102,60 +312,95 @@ export const whatsappService = {
   },
 
   /**
-   * Sends a message from the corretor to the lead, saving to Supabase and updating last interaction
+   * Sends a message from the corretor to the lead, saving to Supabase and dispatching via Evolution API
    */
-  async sendMessage(leadId: string, text: string, corretorId?: string, mediaUrl?: string): Promise<WhatsAppMessage> {
-    const payload = {
-      lead_id: leadId,
-      corretor_id: corretorId || null,
-      remetente_tipo: 'corretor',
-      mensagem: text,
-      midia_url: mediaUrl || null,
-      enviada_at: new Date().toISOString(),
-      status_envio: 'sent',
-    };
+  async sendMessage(
+    leadId: string, 
+    text: string, 
+    sessionName: string = '3c_vendedor', 
+    corretorId?: string, 
+    mediaUrl?: string,
+    customPhone?: string
+  ): Promise<WhatsAppMessage> {
+    const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+    const validLeadId = isUuid(leadId) ? leadId : null;
 
-    const { data, error } = await supabase
-      .from('whatsapp_messages')
-      .insert([payload])
-      .select()
-      .single();
+    let targetPhone = customPhone;
 
-    if (error) {
-      console.error('Error sending message:', error);
-      throw error;
-    }
+    if (!targetPhone && validLeadId && isSupabaseConfigured) {
+      try {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('telefone')
+          .eq('id', validLeadId)
+          .maybeSingle();
 
-    // Try sending via Evolution API asynchronously if lead has phone
-    try {
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('telefone')
-        .eq('id', leadId)
-        .maybeSingle();
-
-      if (lead?.telefone) {
-        // Dispatch to real WhatsApp in the background
-        this.sendEvolutionMessage('3c_vendedor', lead.telefone, text);
+        if (lead?.telefone) {
+          targetPhone = lead.telefone;
+        }
+      } catch (e) {
+        // ignore
       }
-    } catch (e) {
-      console.warn('Could not forward message to Evolution API:', e);
     }
 
-    // Update lead's last interaction timestamp
-    await supabase
-      .from('leads')
-      .update({ ultima_interacao_at: new Date().toISOString() })
-      .eq('id', leadId);
+    // Dispatch to real WhatsApp phone via Evolution API
+    if (targetPhone) {
+      try {
+        await this.sendEvolutionMessage(sessionName, targetPhone, text);
+      } catch (e) {
+        console.warn('Could not forward message to Evolution API:', e);
+      }
+    }
+
+    let insertedId = `msg-${Date.now()}`;
+    let insertedTime = new Date().toISOString();
+
+    if (isSupabaseConfigured) {
+      try {
+        const payload = {
+          lead_id: validLeadId,
+          corretor_id: corretorId || null,
+          remetente_tipo: 'corretor',
+          mensagem: text,
+          midia_url: mediaUrl || null,
+          enviada_at: insertedTime,
+          status_envio: 'sent',
+        };
+
+        const { data } = await supabase
+          .from('whatsapp_messages')
+          .insert([payload])
+          .select()
+          .single();
+
+        if (data) {
+          insertedId = data.id;
+          insertedTime = data.enviada_at;
+        }
+      } catch (err) {
+        console.warn('Could not save message to Supabase:', err);
+      }
+
+      if (validLeadId) {
+        try {
+          await supabase
+            .from('leads')
+            .update({ ultima_interacao_at: new Date().toISOString() })
+            .eq('id', validLeadId);
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
 
     return {
-      id: data.id,
-      leadId: data.lead_id,
-      corretorId: data.corretor_id,
+      id: insertedId,
+      leadId: leadId,
+      corretorId: corretorId,
       fromMe: true,
-      text: data.mensagem,
-      mediaUrl: data.midia_url,
-      timestamp: data.enviada_at,
+      text: text,
+      mediaUrl: mediaUrl,
+      timestamp: insertedTime,
       status: 'delivered',
     };
   },
@@ -202,79 +447,97 @@ export const whatsappService = {
   /**
    * Gets or initializes the WhatsApp instance status for the broker
    */
-  async getInstanceStatus(corretorEmail: string = 'corretor@grupo3c.com.br'): Promise<WhatsAppInstance> {
+  async getInstanceStatus(corretorEmail: string = 'corretor@grupo3c.com.br', corretorId?: string): Promise<WhatsAppInstance> {
     if (!isSupabaseConfigured) {
       return {
         id: 'demo-inst',
-        sessionName: 'corretor_3c',
+        sessionName: '3c_vendedor',
         status: 'disconnected'
       };
     }
 
+    const cleanSessionName = `3c_${corretorEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')}`;
+
+    // Auto-ensure instance on Evolution API
+    await this.ensureInstance(cleanSessionName);
+
     const { data, error } = await supabase
       .from('whatsapp_instances')
       .select('*')
-      .eq('corretor_email', corretorEmail)
+      .or(`corretor_email.eq.${corretorEmail},session_name.eq.${cleanSessionName}`)
       .maybeSingle();
 
     if (error && error.code !== 'PGRST116') {
       console.error('Error fetching whatsapp instance:', error);
     }
 
-    if (data) {
-      let currentStatus = data.status;
-      let currentQr = data.qrcode_base64;
+    let instanceRow = data;
 
-      try {
-        const liveState = await this.checkLiveConnectionState(data.session_name);
-        if (liveState === 'open' && currentStatus !== 'connected') {
-          currentStatus = 'connected';
-          await supabase
-            .from('whatsapp_instances')
-            .update({ status: 'connected', updated_at: new Date().toISOString() })
-            .eq('id', data.id);
-        } else if (currentStatus !== 'connected' && !currentQr) {
-          currentQr = await this.fetchLiveQrCode(data.session_name);
-          if (currentQr) {
-            await supabase
-              .from('whatsapp_instances')
-              .update({ qrcode_base64: currentQr })
-              .eq('id', data.id);
-          }
-        }
-      } catch (err) {
-        console.warn('Error checking live Evolution instance state:', err);
-      }
-
-      return {
-        id: data.id,
-        corretorId: data.corretor_id,
-        sessionName: data.session_name,
-        phoneNumber: data.phone_number,
-        status: currentStatus,
-        qrcodeBase64: currentQr,
-        connectedAt: data.connected_at,
-        lastSyncAt: data.last_sync_at,
+    if (!instanceRow) {
+      const newInstance = {
+        corretor_id: corretorId || null,
+        corretor_email: corretorEmail,
+        session_name: cleanSessionName,
+        status: 'disconnected',
       };
+
+      const { data: created } = await supabase
+        .from('whatsapp_instances')
+        .insert([newInstance])
+        .select()
+        .single();
+      instanceRow = created;
     }
 
-    // Default instance if none exists
-    const newInstance = {
-      corretor_email: corretorEmail,
-      session_name: `3c_${corretorEmail.split('@')[0]}`,
-      status: 'disconnected',
-    };
+    let currentStatus = instanceRow?.status || 'disconnected';
+    let currentPhone = instanceRow?.phone_number || null;
+    let currentQr = instanceRow?.qrcode_base64 || null;
 
-    const { data: created } = await supabase
-      .from('whatsapp_instances')
-      .insert([newInstance])
-      .select()
-      .single();
+    try {
+      const liveState = await this.checkLiveConnectionState(cleanSessionName);
+      if (liveState === 'open') {
+        currentStatus = 'connected';
+        const detectedPhone = await this.getConnectedPhone(cleanSessionName);
+        if (detectedPhone) {
+          currentPhone = detectedPhone;
+        }
+        await supabase
+          .from('whatsapp_instances')
+          .update({
+            status: 'connected',
+            phone_number: currentPhone,
+            qrcode_base64: null,
+            last_sync_at: new Date().toISOString()
+          })
+          .eq('id', instanceRow.id);
+      } else {
+        // WhatsApp is NOT connected in Evolution API: keep as disconnected and fetch fresh QR code
+        currentStatus = 'disconnected';
+        currentPhone = null;
+        currentQr = await this.fetchLiveQrCode(cleanSessionName);
+        await supabase
+          .from('whatsapp_instances')
+          .update({
+            status: 'disconnected',
+            phone_number: null,
+            qrcode_base64: currentQr,
+            last_sync_at: new Date().toISOString()
+          })
+          .eq('id', instanceRow.id);
+      }
+    } catch (err) {
+      console.warn('Error checking live Evolution instance state:', err);
+    }
 
     return {
-      id: created?.id || 'inst-1',
-      sessionName: created?.session_name || 'corretor_3c',
-      status: 'disconnected',
+      id: instanceRow?.id || 'inst-1',
+      corretorId: instanceRow?.corretor_id,
+      sessionName: cleanSessionName,
+      phoneNumber: currentPhone,
+      status: currentStatus,
+      qrcodeBase64: currentQr,
+      connectedAt: instanceRow?.connected_at,
+      lastSyncAt: instanceRow?.last_sync_at,
     };
   },
 
@@ -295,9 +558,18 @@ export const whatsappService = {
   },
 
   /**
-   * Disconnects the WhatsApp instance
+   * Disconnects the WhatsApp instance from both Evolution API and Supabase
    */
-  async disconnectInstance(instanceId: string): Promise<void> {
+  async disconnectInstance(instanceId: string, sessionName: string = '3c_vendedor'): Promise<void> {
+    try {
+      await fetch(`${EVOLUTION_API_URL}/instance/logout/${sessionName}`, {
+        method: 'DELETE',
+        headers: { apikey: EVOLUTION_API_KEY },
+      });
+    } catch (err) {
+      console.warn('Error logging out from Evolution API:', err);
+    }
+
     await supabase
       .from('whatsapp_instances')
       .update({

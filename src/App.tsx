@@ -61,7 +61,7 @@ const AppContent: React.FC = () => {
   const loadWhatsAppInstance = async () => {
     if (!user?.email) return;
     try {
-      const inst = await whatsappService.getInstanceStatus(user.email);
+      const inst = await whatsappService.getInstanceStatus(user.email, user.id);
       setWhatsappInstance(inst);
     } catch (err) {
       console.error('Failed to load WhatsApp instance:', err);
@@ -73,10 +73,11 @@ const AppContent: React.FC = () => {
 
   // Load leads and developments
   const loadData = async () => {
+    if (!user) return;
     setIsLeadsLoading(true);
     try {
       const [leadsData, empsData] = await Promise.all([
-        leadsService.getLeads(),
+        leadsService.getLeads(user.id, user.role),
         empreendimentosService.getEmpreendimentos()
       ]);
       setLeads(leadsData);
@@ -133,7 +134,7 @@ const AppContent: React.FC = () => {
 
   const handleCreateLead = async (newLead: Partial<Lead>) => {
     try {
-      await leadsService.createLead(newLead);
+      await leadsService.createLead(newLead, user?.id);
       await loadData();
       setIsNewLeadModalOpen(false);
     } catch (err) {

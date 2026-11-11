@@ -2,16 +2,23 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Lead, FunnelStage } from '../types';
 
 export const leadsService = {
-  async getLeads(): Promise<Lead[]> {
+  async getLeads(corretorId?: string, role?: string): Promise<Lead[]> {
     if (!isSupabaseConfigured) {
       console.warn('Supabase not configured, using fallback');
       return [];
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('leads')
       .select('*, lead_checklist_items(*)')
       .order('ultima_interacao_at', { ascending: false });
+
+    // Multi-corretor isolation: Corretor sees only their own leads
+    if (role === 'corretor' && corretorId) {
+      query = query.eq('corretor_id', corretorId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching leads:', error);
@@ -55,8 +62,9 @@ export const leadsService = {
     });
   },
 
-  async createLead(leadData: Partial<Lead>): Promise<Lead> {
+  async createLead(leadData: Partial<Lead>, defaultCorretorId?: string): Promise<Lead> {
     const payload = {
+      corretor_id: leadData.corretorId || defaultCorretorId || null,
       nome: leadData.nome,
       telefone: leadData.telefone,
       email: leadData.email || null,

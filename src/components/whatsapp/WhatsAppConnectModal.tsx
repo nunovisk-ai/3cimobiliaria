@@ -5,10 +5,8 @@ import {
   X, 
   CheckCircle2, 
   RotateCw, 
-  QrCode, 
   LogOut, 
   Wifi, 
-  Sparkles,
   ShieldCheck,
   HelpCircle
 } from 'lucide-react';
@@ -27,18 +25,18 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
   onClose,
   onStatusChanged
 }) => {
-  const [timeLeft, setTimeLeft] = useState(60);
+  const [timeLeft, setTimeLeft] = useState(30);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [customPhone, setCustomPhone] = useState('(11) 98765-4321');
   const [liveQrCode, setLiveQrCode] = useState<string | null>(instance?.qrcodeBase64 || null);
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
 
   const isConnected = instance?.status === 'connected';
 
+  const session = instance?.sessionName || `3c_${corretorEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')}`;
+
   // Fetch live QR code from Evolution API
   const fetchFreshQr = async () => {
     setIsRefreshingQr(true);
-    const session = instance?.sessionName || '3c_vendedor';
     try {
       const qr = await whatsappService.fetchLiveQrCode(session);
       if (qr) {
@@ -61,7 +59,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
       setTimeLeft(prev => {
         if (prev <= 1) {
           fetchFreshQr();
-          return 60;
+          return 30;
         }
         return prev - 1;
       });
@@ -69,40 +67,25 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
 
     // Periodically check if phone scanned the QR Code
     const connectionPoll = setInterval(async () => {
-      const session = instance?.sessionName || '3c_vendedor';
       try {
         const state = await whatsappService.checkLiveConnectionState(session);
         if (state === 'open') {
+          const realPhone = await whatsappService.getConnectedPhone(session);
           if (instance?.id) {
-            await whatsappService.setInstanceConnected(instance.id, instance.phoneNumber || '(11) 98765-4321');
+            await whatsappService.setInstanceConnected(instance.id, realPhone || 'WhatsApp Conectado');
           }
           onStatusChanged();
         }
       } catch (err) {
         console.warn('Erro ao checar status de conexao:', err);
       }
-    }, 3500);
+    }, 3000);
 
     return () => {
       clearInterval(interval);
       clearInterval(connectionPoll);
     };
-  }, [isConnected, instance?.sessionName]);
-
-  // Handle Demo Connect
-  const handleDemoConnect = async () => {
-    if (!instance) return;
-    setIsConnecting(true);
-    try {
-      await whatsappService.setInstanceConnected(instance.id, customPhone);
-      onStatusChanged();
-    } catch (err) {
-      console.error('Falha ao conectar WhatsApp demo:', err);
-      alert('Erro ao conectar WhatsApp.');
-    } finally {
-      setIsConnecting(false);
-    }
-  };
+  }, [isConnected, session]);
 
   // Handle Disconnect
   const handleDisconnect = async () => {
@@ -110,7 +93,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
     if (confirm('Tem certeza que deseja desconectar sua conta de WhatsApp deste CRM?')) {
       setIsConnecting(true);
       try {
-        await whatsappService.disconnectInstance(instance.id);
+        await whatsappService.disconnectInstance(instance.id, session);
         onStatusChanged();
       } catch (err) {
         console.error('Erro ao desconectar WhatsApp:', err);
@@ -330,41 +313,30 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
 
               </div>
 
-              {/* DEMO FAST-CONNECT SECTION */}
-              <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl space-y-3">
+              {/* MULTI-CORRETOR DEDICATED SESSION INFO */}
+              <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
                     <span className="text-xs font-bold text-emerald-950">
-                      Conexão Rápida para Avaliação / Demonstração
+                      Sessão Multi-Corretor Isolada
                     </span>
                   </div>
-                  <span className="text-[10px] font-semibold bg-emerald-200/60 text-emerald-900 px-2 py-0.5 rounded-full">
-                    1-Clique
+                  <span className="text-[10px] font-mono font-semibold bg-emerald-200/60 text-emerald-900 px-2.5 py-0.5 rounded-full">
+                    {session}
                   </span>
                 </div>
 
                 <p className="text-[11px] text-emerald-800 leading-relaxed">
-                  Para testar o espelhamento de conversas e o envio direto pelo CRM sem precisar escanear com um celular físico agora, clique no botão abaixo para ativar a sessão de demonstração:
+                  Cada corretor do <strong>Grupo 3C</strong> conecta exclusivamente o seu próprio WhatsApp. Suas conversas, contatos e mensagens ficam 100% restritos ao seu perfil de atendimento.
                 </p>
 
-                <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
-                  <input
-                    type="text"
-                    value={customPhone}
-                    onChange={(e) => setCustomPhone(e.target.value)}
-                    placeholder="Seu telefone ex: (11) 98765-4321"
-                    className="w-full sm:w-48 px-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-xl text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleDemoConnect}
-                    disabled={isConnecting}
-                    className="w-full sm:w-auto px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    <QrCode className="w-4 h-4" />
-                    <span>{isConnecting ? 'Conectando...' : 'Escanear QR Code Demo'}</span>
-                  </button>
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-emerald-700 font-medium">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  </span>
+                  <span>Aguardando leitura do QR Code pela câmera do seu celular...</span>
                 </div>
               </div>
 
