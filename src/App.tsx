@@ -7,6 +7,8 @@ import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { LeadModal } from './components/leads/LeadModal';
 import { NewLeadModal } from './components/leads/NewLeadModal';
 import { EmpreendimentosManager } from './components/empreendimentos/EmpreendimentosManager';
+import { AgendaView } from './components/agenda/AgendaView';
+import { ScheduleVisitModal } from './components/agenda/ScheduleVisitModal';
 import { Lead, FunnelStage } from './types';
 import { leadsService } from './services/leadsService';
 import { Empreendimento, empreendimentosService } from './services/empreendimentosService';
@@ -20,6 +22,15 @@ const AppContent: React.FC = () => {
   const [isLeadsLoading, setIsLeadsLoading] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isNewLeadModalOpen, setIsNewLeadModalOpen] = useState(false);
+
+  // Visit scheduling state
+  const [isScheduleVisitOpen, setIsScheduleVisitOpen] = useState(false);
+  const [leadForVisit, setLeadForVisit] = useState<Lead | null>(null);
+
+  const handleOpenScheduleVisit = (lead?: Lead) => {
+    setLeadForVisit(lead || null);
+    setIsScheduleVisitOpen(true);
+  };
 
   // Empreendimentos state
   const [empreendimentos, setEmpreendimentos] = useState<Empreendimento[]>([]);
@@ -135,6 +146,7 @@ const AppContent: React.FC = () => {
           onSelectLead={(lead) => setSelectedLead(lead)}
           onNewLead={() => setIsNewLeadModalOpen(true)}
           onMoveLead={handleMoveLead}
+          onScheduleVisit={handleOpenScheduleVisit}
         />
       )}
 
@@ -148,23 +160,12 @@ const AppContent: React.FC = () => {
 
       {/* 4. AGENDA DE VISITAS (Sprint 4) */}
       {activeTab === 'agenda' && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-          <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center text-2xl font-bold">
-              📅
-            </div>
-            <h3 className="text-lg font-bold text-slate-900">Agenda de Visitas dos Corretores</h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Módulo de agendamento de visitas com integração com Google Agenda e iCloud programado para a <strong>Sprint 4</strong>.
-            </p>
-            <button
-              onClick={() => setActiveTab('kanban')}
-              className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold hover:bg-brand-600 transition-colors cursor-pointer"
-            >
-              Ir para o Funil Kanban
-            </button>
-          </div>
-        </div>
+        <AgendaView
+          leads={leads}
+          empreendimentos={empreendimentos}
+          onSelectLead={(lead) => setSelectedLead(lead)}
+          onLeadStatusChanged={loadData}
+        />
       )}
 
       {/* 5. WHATSAPP INBOX (Sprint 5) */}
@@ -196,6 +197,7 @@ const AppContent: React.FC = () => {
           onClose={() => setSelectedLead(null)}
           onSave={handleSaveLead}
           onDelete={handleDeleteLead}
+          onScheduleVisit={handleOpenScheduleVisit}
         />
       )}
 
@@ -205,6 +207,22 @@ const AppContent: React.FC = () => {
           empreendimentos={empreendimentos}
           onClose={() => setIsNewLeadModalOpen(false)}
           onCreate={handleCreateLead}
+        />
+      )}
+
+      {/* Schedule Visit Modal */}
+      {isScheduleVisitOpen && (
+        <ScheduleVisitModal
+          lead={leadForVisit}
+          leads={leads}
+          empreendimentos={empreendimentos}
+          onClose={() => {
+            setIsScheduleVisitOpen(false);
+            setLeadForVisit(null);
+          }}
+          onSuccess={() => {
+            loadData();
+          }}
         />
       )}
 

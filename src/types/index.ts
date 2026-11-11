@@ -79,13 +79,17 @@ export interface Lead {
 export interface Visit {
   id: string;
   leadId: string;
-  leadNome: string;
-  corretorId: string;
-  empreendimento: string;
-  enderecoStand: string;
+  leadNome?: string;
+  leadTelefone?: string;
+  corretorId?: string;
+  empreendimentoNome: string;
+  enderecoPlantao?: string;
   dataHora: string;
-  realizada?: boolean;
+  realizada: boolean | null; // null = agendada/pendente, true = realizada, false = não realizada/faltou
+  motivoNaoComparecimento?: string;
   observacoes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface WhatsAppMessage {

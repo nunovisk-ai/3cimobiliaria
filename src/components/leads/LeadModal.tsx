@@ -9,7 +9,8 @@ import {
   Trash2, 
   Save,
   FileCheck2,
-  User
+  User,
+  Calendar
 } from 'lucide-react';
 
 interface LeadModalProps {
@@ -18,6 +19,7 @@ interface LeadModalProps {
   onClose: () => void;
   onSave: (updated: Partial<Lead>) => Promise<void>;
   onDelete: (leadId: string) => Promise<void>;
+  onScheduleVisit?: (lead: Lead) => void;
 }
 
 export const LeadModal: React.FC<LeadModalProps> = ({
@@ -25,7 +27,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   empreendimentos,
   onClose,
   onSave,
-  onDelete
+  onDelete,
+  onScheduleVisit
 }) => {
   const [activeTab, setActiveTab] = useState<'dados' | 'documentos'>('dados');
 
@@ -142,6 +145,20 @@ export const LeadModal: React.FC<LeadModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {onScheduleVisit && (
+              <button
+                type="button"
+                onClick={() => {
+                  onScheduleVisit(lead);
+                  onClose();
+                }}
+                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Agendar Visita</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={openWhatsApp}

@@ -8,7 +8,8 @@ import {
   RotateCw, 
   ArrowLeft, 
   ArrowRight,
-  Clock
+  Clock,
+  Calendar
 } from 'lucide-react';
 
 interface KanbanBoardProps {
@@ -18,6 +19,7 @@ interface KanbanBoardProps {
   onSelectLead: (lead: Lead) => void;
   onNewLead: () => void;
   onMoveLead: (leadId: string, newStatus: FunnelStage) => void;
+  onScheduleVisit?: (lead: Lead) => void;
 }
 
 interface ColumnConfig {
@@ -102,11 +104,22 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onRefresh,
   onSelectLead,
   onNewLead,
-  onMoveLead
+  onMoveLead,
+  onScheduleVisit
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilterEmp, setSelectedFilterEmp] = useState('all');
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
+
+  const handleTransitionLead = (leadId: string, targetStage: FunnelStage) => {
+    onMoveLead(leadId, targetStage);
+    if (targetStage === 'visita_agendada' && onScheduleVisit) {
+      const targetLead = leads.find(l => l.id === leadId);
+      if (targetLead) {
+        onScheduleVisit(targetLead);
+      }
+    }
+  };
 
   // Filter leads based on search and development
   const filteredLeads = leads.filter(lead => {
@@ -137,7 +150,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     e.preventDefault();
     const leadId = e.dataTransfer.getData('text/plain') || draggedLeadId;
     if (leadId) {
-      onMoveLead(leadId, targetStage);
+      handleTransitionLead(leadId, targetStage);
     }
     setDraggedLeadId(null);
   };
@@ -339,20 +352,32 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         )}
 
                         {/* Card Bottom: Quick Actions */}
-                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between">
-                          <button
-                            onClick={(e) => openWhatsApp(e, lead.telefone, lead.nome)}
-                            className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-medium flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            <MessageSquare className="w-3 h-3" />
-                            <span>WhatsApp</span>
-                          </button>
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={(e) => openWhatsApp(e, lead.telefone, lead.nome)}
+                              className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <MessageSquare className="w-3 h-3" />
+                              <span>WhatsApp</span>
+                            </button>
+
+                            {lead.statusFunil === 'visita_agendada' && onScheduleVisit && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onScheduleVisit(lead); }}
+                                className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 px-2 py-1 rounded-lg font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                              >
+                                <Calendar className="w-3 h-3 text-purple-600" />
+                                <span>Agendar</span>
+                              </button>
+                            )}
+                          </div>
 
                           {/* Fast Move Buttons */}
                           <div className="flex items-center gap-1">
                             {prev && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); onMoveLead(lead.id, prev); }}
+                                onClick={(e) => { e.stopPropagation(); handleTransitionLead(lead.id, prev); }}
                                 title="Voltar etapa"
                                 className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
                               >
@@ -362,7 +387,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
                             {next && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); onMoveLead(lead.id, next); }}
+                                onClick={(e) => { e.stopPropagation(); handleTransitionLead(lead.id, next); }}
                                 title="Avançar etapa"
                                 className="p-1 text-brand-600 hover:text-brand-700 hover:bg-orange-50 rounded-md font-bold transition-colors"
                               >

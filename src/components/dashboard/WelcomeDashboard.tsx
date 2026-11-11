@@ -147,8 +147,8 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               <Building2 className="w-4 h-4 text-brand-500" />
               <span>Progresso do Desenvolvimento do CRM</span>
             </h3>
-            <span className="text-xs font-bold text-brand-600 bg-orange-50 px-2.5 py-0.5 rounded-full border border-orange-200">
-              Sprint 1 / 6
+            <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+              Sprint 4 / 6 Concluída
             </span>
           </div>
 
@@ -158,31 +158,49 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               <div>
                 <strong className="text-emerald-900 block font-semibold">Sprint 1: Fundação, Autenticação & Identidade Visual (Concluída)</strong>
                 <p className="text-emerald-700 text-[11px] mt-0.5">
-                  Setup Vite + React + Tailwind, Tela de Login Clean do Grupo 3C, contexto de autenticação com suporte ao Supabase e modo de demonstração.
+                  Setup Vite + React + Tailwind, Tela de Login Clean do Grupo 3C, identidade visual laranja/grafite.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/60">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="text-emerald-900 block font-semibold">Sprint 2: Funil Kanban & Catálogo de Empreendimentos (Concluída)</strong>
+                <p className="text-emerald-700 text-[11px] mt-0.5">
+                  Quadro Kanban com 8 colunas imobiliárias, drag-and-drop, simulação Caixa MCMV e catálogo com 7 lançamentos reais do Grupo 3C.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/60">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="text-emerald-900 block font-semibold">Sprint 3: Gestão Documental & Análise de Crédito Caixa (Concluída)</strong>
+                <p className="text-emerald-700 text-[11px] mt-0.5">
+                  Checklist ágil Caixa com toggle rápido, motivo de rejeição, cópia de lista pendente para WhatsApp e upload opcional para Supabase Storage.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-purple-50/70 border border-purple-200/70">
+              <CheckCircle2 className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="text-purple-900 block font-semibold">Sprint 4: Agenda de Visitas & Sincronização de Calendário (Concluída)</strong>
+                <p className="text-purple-700 text-[11px] mt-0.5">
+                  Controle de visitas aos estandes, integração direta com Google Agenda e Apple Calendar (.ics), WhatsApp de confirmação e baixa pós-visita com reagendamento.
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
               <div className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
-                2
+                5
               </div>
               <div>
-                <strong className="text-slate-800 block font-semibold">Sprint 2: Funil Kanban & Ficha Cadastral (Próxima)</strong>
+                <strong className="text-slate-800 block font-semibold">Sprint 5: Conexão WhatsApp QR Code & Inbox Espelhada (Próxima)</strong>
                 <p className="text-slate-600 text-[11px] mt-0.5">
-                  Quadro interativo com drag-and-drop, colunas imobiliárias, filtros de busca e ficha do lead com FGTS, Renda e Empreendimento.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
-              <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
-                3
-              </div>
-              <div>
-                <strong className="text-slate-800 block font-semibold">Sprint 3: Gestão Documental & Análise de Crédito</strong>
-                <p className="text-slate-600 text-[11px] mt-0.5">
-                  Upload para o Supabase Storage, aprovação/rejeição com motivo e checklist Caixa.
+                  Conexão individual por corretor via QR Code, histórico espelhado de mensagens e envio direto pelo CRM.
                 </p>
               </div>
             </div>
