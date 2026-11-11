@@ -207,7 +207,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(`3c_read_ts_${session}`);
+      const raw = localStorage.getItem(`3c_read_v3_${session}`);
       readTimestampsRef.current = raw ? JSON.parse(raw) : {};
     } catch {
       readTimestampsRef.current = {};
@@ -223,7 +223,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
       }
     }
     try {
-      localStorage.setItem(`3c_read_ts_${session}`, JSON.stringify(readTimestampsRef.current));
+      localStorage.setItem(`3c_read_v3_${session}`, JSON.stringify(readTimestampsRef.current));
     } catch {
       // ignore
     }
@@ -282,6 +282,26 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const unlinkedContact = isConnected ? (unlinkedContacts.find(c => c.id === selectedLeadId) || null) : null;
   const isUnlinked = Boolean(unlinkedContact && !selectedLead);
 
+  const applyFetchedPictures = (picMap: Record<string, string>) => {
+    if (Object.keys(picMap).length === 0) return;
+    setUnlinkedContacts(prev =>
+      prev.map(c => {
+        const pic = picMap[c.remoteJid] || (c.rawPhone ? picMap[c.rawPhone] : undefined);
+        return pic && !c.profilePicUrl ? { ...c, profilePicUrl: pic } : c;
+      })
+    );
+    setRealChatMap(prev => {
+      const next = new Map(prev);
+      for (const [leadId, chatObj] of next.entries()) {
+        const pic = picMap[chatObj.remoteJid] || (chatObj.rawPhone ? picMap[chatObj.rawPhone] : undefined);
+        if (pic && !chatObj.profilePicUrl) {
+          next.set(leadId, { ...chatObj, profilePicUrl: pic });
+        }
+      }
+      return next;
+    });
+  };
+
   // Load real chats from Evolution API
   const loadChats = async () => {
     if (!isConnected) {
@@ -298,7 +318,6 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
       const ownDigits = (instance?.phoneNumber || '').replace(/\D/g, '');
       const isFirstSeed = Object.keys(readTimestampsRef.current).length === 0;
-      const recentCutoffMs = Date.now() - 8 * 60 * 60 * 1000; // last 8 hours
       let seedModified = false;
 
       for (const chat of chats) {
@@ -309,9 +328,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         }
 
         const msgTs = new Date(chat.lastMessageTimestamp || 0).getTime();
+        const hasExplicitRealUnread =
+          typeof chat.rawUnreadCount === 'number' &&
+          chat.rawUnreadCount >= 1 &&
+          chat.rawUnreadCount <= 20 &&
+          !chat.lastFromMe;
 
-        // On first initialization, mark conversations older than 8h as already read
-        if (isFirstSeed && (msgTs < recentCutoffMs || chat.lastFromMe)) {
+        // On first initialization of this session, mark existing chats as read unless Evolution reports 1..20 unread messages
+        if (isFirstSeed && !hasExplicitRealUnread) {
           readTimestampsRef.current[chat.remoteJid] = msgTs;
           seedModified = true;
         }
@@ -329,10 +353,15 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         );
 
         let effectiveUnread = 0;
-        if (!chat.lastFromMe && msgTs > lastReadTs) {
-          effectiveUnread = chat.unreadCount && chat.unreadCount > 0 && chat.unreadCount <= 9
-            ? chat.unreadCount
-            : 1;
+        // If Evolution API explicitly says unreadCount === 0, or last message is from the broker, or chat is currently open -> 0 unread
+        if (chat.rawUnreadCount === 0 || chat.lastFromMe || chatKey === selectedLeadId) {
+          effectiveUnread = 0;
+          if (msgTs > (readTimestampsRef.current[chat.remoteJid] || 0)) {
+            readTimestampsRef.current[chat.remoteJid] = msgTs;
+            seedModified = true;
+          }
+        } else if (!chat.lastFromMe && msgTs > lastReadTs) {
+          effectiveUnread = hasExplicitRealUnread ? chat.rawUnreadCount : 1;
         }
 
         const enrichedChat = {
@@ -362,7 +391,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
       if (seedModified) {
         try {
-          localStorage.setItem(`3c_read_ts_${session}`, JSON.stringify(readTimestampsRef.current));
+          localStorage.setItem(`3c_read_v3_${session}`, JSON.stringify(readTimestampsRef.current));
         } catch {
           // ignore
         }
@@ -380,32 +409,27 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         }
       }
 
-      // Background enrichment for missing profile pictures on visible chats
+      // Progressive background enrichment for missing profile pictures across the conversation list
       const missingPicJids = chats
-        .slice(0, 35)
+        .slice(0, 180)
         .filter(c => !c.profilePicUrl && c.remoteJid)
         .map(c => c.remoteJid);
 
       if (missingPicJids.length > 0) {
-        whatsappService.fetchProfilePicturesBatch(session, missingPicJids).then(picMap => {
-          if (Object.keys(picMap).length === 0) return;
-          setUnlinkedContacts(prev =>
-            prev.map(c => {
-              const pic = picMap[c.remoteJid] || (c.rawPhone ? picMap[c.rawPhone] : undefined);
-              return pic && !c.profilePicUrl ? { ...c, profilePicUrl: pic } : c;
-            })
-          );
-          setRealChatMap(prev => {
-            const next = new Map(prev);
-            for (const [leadId, chatObj] of next.entries()) {
-              const pic = picMap[chatObj.remoteJid] || (chatObj.rawPhone ? picMap[chatObj.rawPhone] : undefined);
-              if (pic && !chatObj.profilePicUrl) {
-                next.set(leadId, { ...chatObj, profilePicUrl: pic });
-              }
+        whatsappService.fetchProfilePicturesBatch(session, missingPicJids)
+          .then(picMap => {
+            applyFetchedPictures(picMap);
+            if (missingPicJids.length > 25) {
+              return whatsappService.fetchProfilePicturesBatch(session, missingPicJids.slice(25));
             }
-            return next;
-          });
-        }).catch(() => {});
+            return {};
+          })
+          .then(picMap2 => {
+            if (picMap2 && Object.keys(picMap2).length > 0) {
+              applyFetchedPictures(picMap2);
+            }
+          })
+          .catch(() => {});
       }
     } catch (err) {
       console.warn('Erro ao carregar chats reais:', err);
@@ -460,6 +484,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         const contact = unlinkedContacts.find(c => c.id === leadIdOrJid);
         if (contact) {
           targetJids = contact.allJids && contact.allJids.length > 0 ? contact.allJids : [contact.remoteJid];
+          if (!contact.profilePicUrl && contact.remoteJid) {
+            whatsappService.fetchProfilePicture(session, contact.remoteJid).then(url => {
+              if (url) applyFetchedPictures({ [contact.remoteJid]: url });
+            }).catch(() => {});
+          }
         } else {
           targetJids = [leadIdOrJid];
         }
@@ -477,6 +506,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             const ddi = clean.startsWith('55') ? clean : `55${clean}`;
             targetJids = [`${ddi}@s.whatsapp.net`];
           }
+          if (realChat && !realChat.profilePicUrl && realChat.remoteJid) {
+            whatsappService.fetchProfilePicture(session, realChat.remoteJid).then(url => {
+              if (url) applyFetchedPictures({ [realChat.remoteJid]: url });
+            }).catch(() => {});
+          }
         }
       }
 
@@ -488,7 +522,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           if (discoveredName) {
             setUnlinkedContacts(prev =>
               prev.map(c =>
-                c.id === leadIdOrJid && /^\+?[\d\s().-]+$/.test(c.nome.trim())
+                c.id === leadIdOrJid &&
+                (c.nome === 'Contato WhatsApp' || /^\+?[\d\s().-]+$/.test(c.nome.trim()))
                   ? { ...c, nome: discoveredName }
                   : c
               )
@@ -911,11 +946,6 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   <WhatsAppIcon className="w-4 h-4 text-white" />
                 </div>
                 <h3 className="text-sm font-bold text-slate-900">Conversas WhatsApp</h3>
-                {isConnected && totalUnreadCount > 0 && (
-                  <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-2xs animate-in fade-in">
-                    {totalUnreadCount} {totalUnreadCount === 1 ? 'não lida' : 'não lidas'}
-                  </span>
-                )}
               </div>
 
               {/* Status Badge */}

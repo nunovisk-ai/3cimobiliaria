@@ -112,14 +112,13 @@ const AppContent: React.FC = () => {
         const chats = await whatsappService.getRealChats(session);
         let readTsMap: Record<string, number> = {};
         try {
-          const raw = localStorage.getItem(`3c_read_ts_${session}`);
+          const raw = localStorage.getItem(`3c_read_v3_${session}`);
           if (raw) readTsMap = JSON.parse(raw);
         } catch {
           // ignore
         }
 
         const isFirstSeed = Object.keys(readTsMap).length === 0;
-        const recentCutoffMs = Date.now() - 8 * 60 * 60 * 1000;
         const ownDigits = (whatsappInstance.phoneNumber || '').replace(/\D/g, '');
         let seedModified = false;
         let count = 0;
@@ -130,10 +129,17 @@ const AppContent: React.FC = () => {
             continue;
           }
           const msgTs = new Date(chat.lastMessageTimestamp || 0).getTime();
-          if (isFirstSeed && (msgTs < recentCutoffMs || chat.lastFromMe)) {
+          const hasExplicitRealUnread =
+            typeof chat.rawUnreadCount === 'number' &&
+            chat.rawUnreadCount >= 1 &&
+            chat.rawUnreadCount <= 20 &&
+            !chat.lastFromMe;
+
+          if (isFirstSeed && !hasExplicitRealUnread) {
             readTsMap[chat.remoteJid] = msgTs;
             seedModified = true;
           }
+
           const matchedLead = leads.find(l => {
             const leadDigits = (l.telefone || '').replace(/\D/g, '');
             if (!leadDigits || !cleanChatDigits) return false;
@@ -141,14 +147,20 @@ const AppContent: React.FC = () => {
           });
           const chatKey = matchedLead ? matchedLead.id : chat.remoteJid;
           const lastReadTs = Math.max(readTsMap[chatKey] || 0, readTsMap[chat.remoteJid] || 0);
-          if (!chat.lastFromMe && msgTs > lastReadTs) {
-            count += chat.unreadCount && chat.unreadCount > 0 && chat.unreadCount <= 9 ? chat.unreadCount : 1;
+
+          if (chat.rawUnreadCount === 0 || chat.lastFromMe) {
+            if (msgTs > (readTsMap[chat.remoteJid] || 0)) {
+              readTsMap[chat.remoteJid] = msgTs;
+              seedModified = true;
+            }
+          } else if (!chat.lastFromMe && msgTs > lastReadTs) {
+            count += hasExplicitRealUnread ? chat.rawUnreadCount : 1;
           }
         }
 
         if (seedModified) {
           try {
-            localStorage.setItem(`3c_read_ts_${session}`, JSON.stringify(readTsMap));
+            localStorage.setItem(`3c_read_v3_${session}`, JSON.stringify(readTsMap));
           } catch {
             // ignore
           }
