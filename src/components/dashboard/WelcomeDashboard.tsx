@@ -20,12 +20,14 @@ interface WelcomeDashboardProps {
   onGoToKanban: () => void;
   onGoToAgenda: () => void;
   onGoToWhatsApp: () => void;
+  unreadWhatsAppCount?: number;
 }
 
 export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({ 
   onGoToKanban, 
   onGoToAgenda, 
-  onGoToWhatsApp 
+  onGoToWhatsApp,
+  unreadWhatsAppCount = 0
 }) => {
   const { user } = useAuth();
 
@@ -73,7 +75,12 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               className="py-2.5 px-4 bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-800/80 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
             >
               <WhatsAppIcon className="w-4 h-4 text-emerald-400" />
-              <span>Conectar WhatsApp</span>
+              <span>WhatsApp Inbox</span>
+              {unreadWhatsAppCount > 0 && (
+                <span className="bg-emerald-500 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
+                  {unreadWhatsAppCount} {unreadWhatsAppCount === 1 ? 'nova' : 'novas'}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -122,17 +129,27 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
           </p>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2">
+        <div 
+          onClick={onGoToWhatsApp}
+          className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-2 cursor-pointer hover:border-emerald-300 transition-colors"
+        >
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-medium">WhatsApp Espelhado</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center relative">
               <MessageSquare className="w-4 h-4" />
+              {unreadWhatsAppCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-bold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center">
+                  {unreadWhatsAppCount}
+                </span>
+              )}
             </div>
           </div>
-          <p className="text-2xl font-bold text-slate-900">Ativo</p>
+          <p className="text-2xl font-bold text-slate-900">
+            {unreadWhatsAppCount > 0 ? `${unreadWhatsAppCount} não lidas` : 'Ativo'}
+          </p>
           <p className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3" />
-            <span>Instância conectada</span>
+            <span>{unreadWhatsAppCount > 0 ? 'Clique para responder' : 'Instância conectada'}</span>
           </p>
         </div>
 

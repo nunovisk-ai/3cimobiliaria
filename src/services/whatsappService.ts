@@ -89,6 +89,31 @@ const lidMemoryCache = new Map<string, string>(Object.entries(INITIAL_LID_TO_PHO
 const nameMemoryCache = new Map<string, string>();
 const picMemoryCache = new Map<string, string | null>();
 const syncedGroupSessions = new Set<string>();
+const configuredSettingsSessions = new Set<string>();
+
+export function buildSessionName(corretorEmail: string): string {
+  const email = (corretorEmail || 'vendedor@grupo3c.com.br').trim().toLowerCase();
+  if (email.endsWith('@grupo3c.com.br')) {
+    const prefix = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_');
+    return `3c_${prefix}`;
+  }
+  return `3c_${email.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+}
+
+function extractMessageStatus(m: any): 'sent' | 'delivered' | 'read' | 'deleted' {
+  if (!m) return 'delivered';
+  if (m.status === 'DELETED') return 'deleted';
+
+  const updates: any[] = Array.isArray(m.MessageUpdate) ? m.MessageUpdate : [];
+  const statuses = updates.map(u => u?.status).filter(Boolean);
+  if (m.status) statuses.push(m.status);
+
+  if (statuses.includes('DELETED')) return 'deleted';
+  if (statuses.includes('READ') || statuses.includes('PLAYED')) return 'read';
+  if (statuses.includes('DELIVERY_ACK')) return 'delivered';
+  if (statuses.includes('SERVER_ACK') || statuses.includes('PENDING')) return 'sent';
+  return 'delivered';
+}
 
 function isValidContactName(name?: string | null): boolean {
   if (!name || typeof name !== 'string') return false;
@@ -257,7 +282,10 @@ export const whatsappService = {
             qrcode: true,
           }),
         });
+      }
 
+      if (!configuredSettingsSessions.has(sessionName)) {
+        configuredSettingsSessions.add(sessionName);
         await fetch(`${EVOLUTION_API_URL}/settings/set/${sessionName}`, {
           method: 'POST',
           headers: {
@@ -269,7 +297,7 @@ export const whatsappService = {
             msgCall: '',
             groupsIgnore: true, // Keep groups ignored
             alwaysOnline: false,
-            readMessages: true,
+            readMessages: false, // Do NOT auto-mark incoming messages as read before the broker reads them
             readStatus: false,
             syncFullHistory: false,
           }),
@@ -281,39 +309,47 @@ export const whatsappService = {
   },
 
   /**
-   * Background sync of LID -> Phone mappings from group participants
+   * Syncs LID -> Phone mappings from group participants for any connected WhatsApp account
    */
-  syncGroupLidMappings(sessionName: string): void {
-    if (syncedGroupSessions.has(sessionName)) return;
+  async syncGroupLidMappings(sessionName: string, force: boolean = false): Promise<void> {
+    if (!force && syncedGroupSessions.has(sessionName)) return;
     syncedGroupSessions.add(sessionName);
 
-    fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${sessionName}?getParticipants=true`, {
-      method: 'GET',
-      headers: { apikey: EVOLUTION_API_KEY },
-    })
-      .then(r => (r.ok ? r.json() : []))
-      .then(groups => {
-        if (!Array.isArray(groups)) return;
-        const stored = loadLocalCache(`3c_lid_map_${sessionName}`);
-        let updated = false;
-        for (const g of groups) {
-          for (const p of g.participants || []) {
-            if (p.id?.includes('@lid') && p.phoneNumber?.includes('@s.whatsapp.net')) {
-              lidMemoryCache.set(p.id, p.phoneNumber);
-              if (stored[p.id] !== p.phoneNumber) {
-                stored[p.id] = p.phoneNumber;
-                updated = true;
-              }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+    try {
+      const r = await fetch(`${EVOLUTION_API_URL}/group/fetchAllGroups/${sessionName}?getParticipants=true`, {
+        method: 'GET',
+        headers: { apikey: EVOLUTION_API_KEY },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!r.ok) return;
+
+      const groups = await r.json();
+      if (!Array.isArray(groups)) return;
+
+      const stored = loadLocalCache(`3c_lid_map_${sessionName}`);
+      let updated = false;
+      for (const g of groups) {
+        for (const p of g.participants || []) {
+          if (p.id?.includes('@lid') && p.phoneNumber?.includes('@s.whatsapp.net')) {
+            lidMemoryCache.set(p.id, p.phoneNumber);
+            if (stored[p.id] !== p.phoneNumber) {
+              stored[p.id] = p.phoneNumber;
+              updated = true;
             }
           }
         }
-        if (updated) {
-          saveLocalCache(`3c_lid_map_${sessionName}`, stored);
-        }
-      })
-      .catch(() => {
-        // ignore background sync errors
-      });
+      }
+      if (updated) {
+        saveLocalCache(`3c_lid_map_${sessionName}`, stored);
+      }
+    } catch {
+      clearTimeout(timeoutId);
+      // ignore background sync errors
+    }
   },
 
   /**
@@ -403,8 +439,12 @@ export const whatsappService = {
         picMemoryCache.set(k, v === 'NONE' ? null : v);
       }
 
-      // Trigger background group LID discovery
-      this.syncGroupLidMappings(sessionName);
+      // If this session has no cached LID mappings yet (e.g. newly connected broker), await group LID discovery once
+      if (Object.keys(storedLids).length === 0) {
+        await this.syncGroupLidMappings(sessionName);
+      } else {
+        this.syncGroupLidMappings(sessionName);
+      }
 
       const [chatsRes, contactsRes, incomingMsgsRes] = await Promise.allSettled([
         fetch(`${EVOLUTION_API_URL}/chat/findChats/${sessionName}`, {
@@ -518,11 +558,12 @@ export const whatsappService = {
         }
       }
 
-      // Filter out WhatsApp groups, status broadcasts, self-test chat, and empty placeholder/protocol records
+      // Filter out WhatsApp groups, status broadcasts, deleted test messages, and empty placeholder/protocol records
       const nonGroups = chats.filter((c: any) => {
         if (!c.remoteJid || c.remoteJid.includes('@g.us') || c.remoteJid.includes('broadcast')) return false;
         const msgType = c.lastMessage?.messageType;
         if (msgType === 'placeholderMessage' || msgType === 'protocolMessage') return false;
+        if (extractMessageStatus(c.lastMessage) === 'deleted') return false;
         return true;
       });
 
@@ -679,6 +720,9 @@ export const whatsappService = {
                     '';
         }
 
+        const lastFromMe = Boolean(c.lastMessage?.key?.fromMe);
+        const lastMessageStatus = extractMessageStatus(c.lastMessage);
+
         return {
           id: canonicalJid,
           remoteJid: canonicalJid,
@@ -693,6 +737,8 @@ export const whatsappService = {
           lastMessage: lastMsg,
           lastMessageTimestamp: lastTime,
           lastMessageType: c.lastMessage?.messageType,
+          lastFromMe,
+          lastMessageStatus: lastMessageStatus === 'deleted' ? 'delivered' : lastMessageStatus,
         };
       });
 
@@ -710,6 +756,28 @@ export const whatsappService = {
     } catch (err) {
       console.warn('Could not fetch real chats from Evolution API:', err);
       return [];
+    }
+  },
+
+  /**
+   * Marks a chat as read in Evolution API
+   */
+  async markChatAsRead(sessionName: string, remoteJids: string[]): Promise<void> {
+    try {
+      for (const jid of remoteJids) {
+        fetch(`${EVOLUTION_API_URL}/chat/markMessageAsRead/${sessionName}`, {
+          method: 'POST',
+          headers: {
+            'apikey': EVOLUTION_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            readMessages: [{ remoteJid: jid, fromMe: false }],
+          }),
+        }).catch(() => {});
+      }
+    } catch {
+      // ignore
     }
   },
 
@@ -747,50 +815,55 @@ export const whatsappService = {
         if (res.status === 'fulfilled') {
           const data = res.value;
           const records = data.messages?.records || (Array.isArray(data) ? data : []);
-          const parsed = records.map((m: any) => {
-            const msgObj = m.message || {};
-            const isAudio = Boolean(msgObj.audioMessage);
-            const isImage = Boolean(msgObj.imageMessage);
-            const isDoc = Boolean(msgObj.documentMessage);
-            const audioSec = msgObj.audioMessage?.seconds || 0;
+          const parsed = records
+            .filter((m: any) => extractMessageStatus(m) !== 'deleted')
+            .map((m: any) => {
+              const msgObj = m.message || {};
+              const isAudio = Boolean(msgObj.audioMessage);
+              const isImage = Boolean(msgObj.imageMessage);
+              const isDoc = Boolean(msgObj.documentMessage);
+              const audioSec = msgObj.audioMessage?.seconds || 0;
 
-            const tplText = msgObj.templateMessage?.hydratedFourRowTemplate?.hydratedContentText ||
-                            msgObj.templateMessage?.interactiveMessageTemplate?.body?.text ||
-                            '';
+              const tplText = msgObj.templateMessage?.hydratedFourRowTemplate?.hydratedContentText ||
+                              msgObj.templateMessage?.interactiveMessageTemplate?.body?.text ||
+                              '';
 
-            const text = msgObj.conversation || 
-                         msgObj.extendedTextMessage?.text || 
-                         msgObj.imageMessage?.caption || 
-                         tplText ||
-                         (isAudio ? '🎤 Mensagem de áudio' : '') ||
-                         (isImage ? '📷 Imagem' : '') ||
-                         (isDoc ? '📄 Documento' : '') ||
-                         '';
+              const text = msgObj.conversation || 
+                           msgObj.extendedTextMessage?.text || 
+                           msgObj.imageMessage?.caption || 
+                           tplText ||
+                           (isAudio ? '🎤 Mensagem de áudio' : '') ||
+                           (isImage ? '📷 Imagem' : '') ||
+                           (isDoc ? '📄 Documento' : '') ||
+                           '';
 
-            const validSender = (!m.key?.fromMe && isValidContactName(m.pushName)) ? m.pushName.trim() : undefined;
-            if (validSender) {
-              for (const j of jidList) {
-                nameMemoryCache.set(j, validSender);
-                if (storedNames[j] !== validSender) {
-                  storedNames[j] = validSender;
-                  namesUpdated = true;
+              const validSender = (!m.key?.fromMe && isValidContactName(m.pushName)) ? m.pushName.trim() : undefined;
+              if (validSender) {
+                for (const j of jidList) {
+                  nameMemoryCache.set(j, validSender);
+                  if (storedNames[j] !== validSender) {
+                    storedNames[j] = validSender;
+                    namesUpdated = true;
+                  }
                 }
               }
-            }
 
-            return {
-              id: m.key?.id || m.id || String(Math.random()),
-              leadId: leadId || jidList[0],
-              fromMe: Boolean(m.key?.fromMe),
-              senderName: validSender,
-              text: text,
-              mediaType: isAudio ? 'audio' : (isImage ? 'image' : (isDoc ? 'document' : undefined)),
-              audioDuration: isAudio ? audioSec : undefined,
-              audioUrl: msgObj.audioMessage?.url || undefined,
-              timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
-              status: m.status === 'READ' ? 'read' : 'delivered',
-            };
-          }).filter((m: any) => m.text || m.mediaType);
+              const msgStatus = extractMessageStatus(m);
+
+              return {
+                id: m.key?.id || m.id || String(Math.random()),
+                leadId: leadId || jidList[0],
+                fromMe: Boolean(m.key?.fromMe),
+                senderName: validSender,
+                text: text,
+                mediaType: isAudio ? 'audio' : (isImage ? 'image' : (isDoc ? 'document' : undefined)),
+                audioDuration: isAudio ? audioSec : undefined,
+                audioUrl: msgObj.audioMessage?.url || undefined,
+                timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
+                status: (msgStatus === 'deleted' ? 'delivered' : msgStatus) as 'sent' | 'delivered' | 'read',
+              };
+            })
+            .filter((m: any) => m.text || m.mediaType);
 
           evolutionMsgs.push(...parsed);
         }
@@ -813,19 +886,42 @@ export const whatsappService = {
       }
     }
 
-    // Merge and deduplicate by id or text+fromMe
+    // Merge and deduplicate by id and by content+timestamp, upgrading status to 'read' if any duplicate has 'read'
     const combined = [...evolutionMsgs, ...supabaseMsgs];
-    const seen = new Set<string>();
-    const unique: WhatsAppMessage[] = [];
+    const rank = { sent: 1, delivered: 2, read: 3 };
+    const byKey = new Map<string, WhatsAppMessage>();
+
     for (const msg of combined) {
-      const key = msg.id || `${msg.fromMe}_${msg.text}_${msg.timestamp.slice(0, 16)}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(msg);
+      const contentKey = `${msg.fromMe}_${msg.text}_${msg.timestamp.slice(0, 19)}`;
+      const existing = byKey.get(contentKey) || (msg.id ? byKey.get(msg.id) : undefined);
+      if (!existing) {
+        byKey.set(contentKey, msg);
+        if (msg.id) byKey.set(msg.id, msg);
+      } else {
+        if ((rank[msg.status] || 0) > (rank[existing.status] || 0)) {
+          existing.status = msg.status;
+        }
       }
     }
 
+    const unique = Array.from(new Set(byKey.values()));
     unique.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+    // In WhatsApp, when a message is marked 'read', all preceding outgoing messages in the same chat were also read
+    let lastReadOutgoingIdx = -1;
+    for (let i = 0; i < unique.length; i++) {
+      if (unique[i].fromMe && unique[i].status === 'read') {
+        lastReadOutgoingIdx = i;
+      }
+    }
+    if (lastReadOutgoingIdx >= 0) {
+      for (let i = 0; i < lastReadOutgoingIdx; i++) {
+        if (unique[i].fromMe) {
+          unique[i].status = 'read';
+        }
+      }
+    }
+
     return unique;
   },
 
@@ -1122,7 +1218,7 @@ export const whatsappService = {
       };
     }
 
-    const cleanSessionName = `3c_${corretorEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')}`;
+    const cleanSessionName = buildSessionName(corretorEmail);
 
     // Auto-ensure instance on Evolution API
     await this.ensureInstance(cleanSessionName);

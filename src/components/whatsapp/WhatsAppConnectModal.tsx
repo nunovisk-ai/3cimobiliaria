@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { WhatsAppInstance } from '../../types';
-import { whatsappService } from '../../services/whatsappService';
+import { whatsappService, buildSessionName } from '../../services/whatsappService';
 import { 
   X, 
   CheckCircle2, 
@@ -32,7 +32,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
 
   const isConnected = instance?.status === 'connected';
 
-  const session = instance?.sessionName || `3c_${corretorEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_')}`;
+  const session = instance?.sessionName || buildSessionName(corretorEmail);
 
   // Fetch live QR code from Evolution API
   const fetchFreshQr = async () => {
@@ -71,6 +71,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
         const state = await whatsappService.checkLiveConnectionState(session);
         if (state === 'open') {
           const realPhone = await whatsappService.getConnectedPhone(session);
+          await whatsappService.syncGroupLidMappings(session, true);
           if (instance?.id) {
             await whatsappService.setInstanceConnected(instance.id, realPhone || 'WhatsApp Conectado');
           }

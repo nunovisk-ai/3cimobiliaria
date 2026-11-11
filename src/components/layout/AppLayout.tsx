@@ -21,6 +21,7 @@ interface AppLayoutProps {
   onTabChange: (tab: string) => void;
   isWhatsAppConnected?: boolean;
   whatsappPhone?: string;
+  unreadWhatsAppCount?: number;
   onOpenWhatsAppModal?: () => void;
 }
 
@@ -30,6 +31,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onTabChange,
   isWhatsAppConnected = false,
   whatsappPhone,
+  unreadWhatsAppCount = 0,
   onOpenWhatsAppModal
 }) => {
   const { user, logout, isAdmin } = useAuth();
@@ -152,7 +154,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             {/* WhatsApp Inbox */}
             <button
               onClick={() => onTabChange('whatsapp')}
-              title={isCollapsed ? 'WhatsApp Inbox' : undefined}
+              title={isCollapsed ? `WhatsApp Inbox${unreadWhatsAppCount > 0 ? ` (${unreadWhatsAppCount} não lidas)` : ''}` : undefined}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer relative ${
                 activeTab === 'whatsapp'
                   ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25'
@@ -161,8 +163,24 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             >
               <WhatsAppIcon className="w-4 h-4 flex-shrink-0" />
               {!isCollapsed && <span>WhatsApp Inbox</span>}
-              {isWhatsAppConnected && !isCollapsed && (
-                <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              {unreadWhatsAppCount > 0 ? (
+                !isCollapsed ? (
+                  <span className={`ml-auto text-[10px] font-extrabold min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center shadow-2xs ${
+                    activeTab === 'whatsapp'
+                      ? 'bg-white text-brand-600'
+                      : 'bg-emerald-500 text-white'
+                  }`}>
+                    {unreadWhatsAppCount}
+                  </span>
+                ) : (
+                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[9px] font-extrabold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center shadow-2xs">
+                    {unreadWhatsAppCount}
+                  </span>
+                )
+              ) : (
+                isWhatsAppConnected && !isCollapsed && (
+                  <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                )
               )}
             </button>
           </div>
@@ -313,6 +331,20 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           {/* Right Header Utilities */}
           <div className="flex items-center gap-2 sm:gap-3">
             
+            {/* Unread WhatsApp Quick Alert Pill on Initial/Other Screens */}
+            {unreadWhatsAppCount > 0 && activeTab !== 'whatsapp' && (
+              <button
+                onClick={() => onTabChange('whatsapp')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                title="Abrir mensagens não lidas no WhatsApp Inbox"
+              >
+                <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600" />
+                <span>
+                  {unreadWhatsAppCount} {unreadWhatsAppCount === 1 ? 'mensagem não lida' : 'mensagens não lidas'}
+                </span>
+              </button>
+            )}
+
             {/* Mobile WhatsApp Pill */}
             <div 
               onClick={onOpenWhatsAppModal || (() => onTabChange('whatsapp'))}
@@ -328,11 +360,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
             {/* Notification Bell */}
             <button 
+              onClick={() => onTabChange('whatsapp')}
               className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors relative cursor-pointer"
-              title="Notificações"
+              title={unreadWhatsAppCount > 0 ? `${unreadWhatsAppCount} mensagens não lidas no WhatsApp` : 'Notificações'}
             >
               <Bell className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full" />
+              {unreadWhatsAppCount > 0 ? (
+                <span className="absolute -top-0.5 -right-0.5 bg-emerald-500 text-white text-[9px] font-extrabold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center">
+                  {unreadWhatsAppCount}
+                </span>
+              ) : (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-brand-500 rounded-full" />
+              )}
             </button>
 
             {/* Desktop User Initials Pill */}
@@ -437,6 +476,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 >
                   <WhatsAppIcon className="w-4 h-4" />
                   <span>WhatsApp Inbox</span>
+                  {unreadWhatsAppCount > 0 && (
+                    <span className={`ml-auto text-[10px] font-extrabold min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center ${
+                      activeTab === 'whatsapp' ? 'bg-white text-brand-600' : 'bg-emerald-500 text-white'
+                    }`}>
+                      {unreadWhatsAppCount}
+                    </span>
+                  )}
                 </button>
               </div>
 

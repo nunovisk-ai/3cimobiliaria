@@ -37,6 +37,7 @@ const AppContent: React.FC = () => {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [chatTargetLeadId, setChatTargetLeadId] = useState<string | null>(null);
   const [newLeadInitialValues, setNewLeadInitialValues] = useState<Partial<Lead> | undefined>(undefined);
+  const [unreadWhatsAppCount, setUnreadWhatsAppCount] = useState<number>(0);
 
   const handleOpenScheduleVisit = (lead?: Lead) => {
     setLeadForVisit(lead || null);
@@ -63,6 +64,9 @@ const AppContent: React.FC = () => {
     try {
       const inst = await whatsappService.getInstanceStatus(user.email, user.id);
       setWhatsappInstance(inst);
+      if (inst.status !== 'connected') {
+        setUnreadWhatsAppCount(0);
+      }
     } catch (err) {
       console.error('Failed to load WhatsApp instance:', err);
     }
@@ -95,6 +99,71 @@ const AppContent: React.FC = () => {
       loadWhatsAppInstance();
     }
   }, [user]);
+
+  // Background unread messages polling when on initial/other tabs
+  useEffect(() => {
+    if (!whatsappInstance || whatsappInstance.status !== 'connected' || activeTab === 'whatsapp') {
+      return;
+    }
+
+    const session = whatsappInstance.sessionName;
+    const checkUnread = async () => {
+      try {
+        const chats = await whatsappService.getRealChats(session);
+        let readTsMap: Record<string, number> = {};
+        try {
+          const raw = localStorage.getItem(`3c_read_ts_${session}`);
+          if (raw) readTsMap = JSON.parse(raw);
+        } catch {
+          // ignore
+        }
+
+        const isFirstSeed = Object.keys(readTsMap).length === 0;
+        const recentCutoffMs = Date.now() - 8 * 60 * 60 * 1000;
+        const ownDigits = (whatsappInstance.phoneNumber || '').replace(/\D/g, '');
+        let seedModified = false;
+        let count = 0;
+
+        for (const chat of chats) {
+          const cleanChatDigits = (chat.rawPhone || '').replace(/\D/g, '');
+          if (ownDigits && cleanChatDigits && ownDigits.length >= 8 && cleanChatDigits.slice(-8) === ownDigits.slice(-8)) {
+            continue;
+          }
+          const msgTs = new Date(chat.lastMessageTimestamp || 0).getTime();
+          if (isFirstSeed && (msgTs < recentCutoffMs || chat.lastFromMe)) {
+            readTsMap[chat.remoteJid] = msgTs;
+            seedModified = true;
+          }
+          const matchedLead = leads.find(l => {
+            const leadDigits = (l.telefone || '').replace(/\D/g, '');
+            if (!leadDigits || !cleanChatDigits) return false;
+            return leadDigits.slice(-8) === cleanChatDigits.slice(-8);
+          });
+          const chatKey = matchedLead ? matchedLead.id : chat.remoteJid;
+          const lastReadTs = Math.max(readTsMap[chatKey] || 0, readTsMap[chat.remoteJid] || 0);
+          if (!chat.lastFromMe && msgTs > lastReadTs) {
+            count += chat.unreadCount && chat.unreadCount > 0 && chat.unreadCount <= 9 ? chat.unreadCount : 1;
+          }
+        }
+
+        if (seedModified) {
+          try {
+            localStorage.setItem(`3c_read_ts_${session}`, JSON.stringify(readTsMap));
+          } catch {
+            // ignore
+          }
+        }
+
+        setUnreadWhatsAppCount(count);
+      } catch {
+        // ignore
+      }
+    };
+
+    checkUnread();
+    const timer = setInterval(checkUnread, 15000);
+    return () => clearInterval(timer);
+  }, [whatsappInstance?.status, whatsappInstance?.sessionName, activeTab, leads]);
 
   // Lead actions
   const handleMoveLead = async (leadId: string, newStatus: FunnelStage) => {
@@ -169,6 +238,7 @@ const AppContent: React.FC = () => {
       onTabChange={(tab: any) => setActiveTab(tab)}
       isWhatsAppConnected={whatsappInstance?.status === 'connected'}
       whatsappPhone={whatsappInstance?.phoneNumber}
+      unreadWhatsAppCount={unreadWhatsAppCount}
       onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
     >
       
@@ -178,6 +248,7 @@ const AppContent: React.FC = () => {
           onGoToKanban={() => setActiveTab('kanban')}
           onGoToAgenda={() => setActiveTab('agenda')}
           onGoToWhatsApp={() => setActiveTab('whatsapp')}
+          unreadWhatsAppCount={unreadWhatsAppCount}
         />
       )}
 
@@ -226,6 +297,7 @@ const AppContent: React.FC = () => {
           onOpenConnectModal={() => setIsWhatsAppModalOpen(true)}
           onOpenCreateLead={handleOpenCreateLead}
           onUpdateLead={handleQuickUpdateLead}
+          onUnreadCountChange={setUnreadWhatsAppCount}
         />
       )}
 
