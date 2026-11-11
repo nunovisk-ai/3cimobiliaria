@@ -8,7 +8,6 @@ import {
   Building2, 
   Calendar, 
   FileCheck2, 
-  ExternalLink, 
   CheckCheck, 
   Sparkles, 
   Bot, 
@@ -198,6 +197,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   const [unlinkedContacts, setUnlinkedContacts] = useState<UnlinkedContact[]>([]);
   const [realChatMap, setRealChatMap] = useState<Map<string, any>>(new Map());
+  const [brokenPics, setBrokenPics] = useState<Record<string, boolean>>({});
+  const recentSentMessagesRef = useRef<Array<{ chatKey: string; msg: WhatsAppMessage; sentAt: number }>>([]);
 
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(
     initialSelectedLeadId || (leads[0]?.id || null)
@@ -282,6 +283,34 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           setSelectedLeadId(unlinkedList[0].id);
         }
       }
+
+      // Background enrichment for missing profile pictures on visible chats
+      const missingPicJids = chats
+        .slice(0, 35)
+        .filter(c => !c.profilePicUrl && c.remoteJid)
+        .map(c => c.remoteJid);
+
+      if (missingPicJids.length > 0) {
+        whatsappService.fetchProfilePicturesBatch(session, missingPicJids).then(picMap => {
+          if (Object.keys(picMap).length === 0) return;
+          setUnlinkedContacts(prev =>
+            prev.map(c => {
+              const pic = picMap[c.remoteJid] || (c.rawPhone ? picMap[c.rawPhone] : undefined);
+              return pic && !c.profilePicUrl ? { ...c, profilePicUrl: pic } : c;
+            })
+          );
+          setRealChatMap(prev => {
+            const next = new Map(prev);
+            for (const [leadId, chatObj] of next.entries()) {
+              const pic = picMap[chatObj.remoteJid] || (chatObj.rawPhone ? picMap[chatObj.rawPhone] : undefined);
+              if (pic && !chatObj.profilePicUrl) {
+                next.set(leadId, { ...chatObj, profilePicUrl: pic });
+              }
+            }
+            return next;
+          });
+        }).catch(() => {});
+      }
     } catch (err) {
       console.warn('Erro ao carregar chats reais:', err);
     }
@@ -357,7 +386,44 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
       if (targetJids.length > 0) {
         const msgs = await whatsappService.getRealMessages(session, targetJids, leadId);
-        setMessages(msgs);
+
+        if (isContactUnlinked) {
+          const discoveredName = [...msgs].reverse().find(m => !m.fromMe && m.senderName)?.senderName;
+          if (discoveredName) {
+            setUnlinkedContacts(prev =>
+              prev.map(c =>
+                c.id === leadIdOrJid && /^\+?[\d\s().-]+$/.test(c.nome.trim())
+                  ? { ...c, nome: discoveredName }
+                  : c
+              )
+            );
+          }
+        }
+
+        // Preserve recently sent optimistic/audio messages not yet indexed or keep local base64 audioUrl
+        const now = Date.now();
+        recentSentMessagesRef.current = recentSentMessagesRef.current.filter(item => now - item.sentAt < 25000);
+        const recentForChat = recentSentMessagesRef.current.filter(item => item.chatKey === leadIdOrJid);
+
+        const merged = msgs.map(m => {
+          const matchingRecent = recentForChat.find(r => r.msg.id === m.id && r.msg.audioUrl);
+          return matchingRecent ? { ...m, audioUrl: matchingRecent.msg.audioUrl } : m;
+        });
+
+        for (const recent of recentForChat) {
+          const alreadyPresent = merged.some(
+            m =>
+              m.id === recent.msg.id ||
+              (m.fromMe &&
+                m.text === recent.msg.text &&
+                Math.abs(new Date(m.timestamp).getTime() - new Date(recent.msg.timestamp).getTime()) < 15000)
+          );
+          if (!alreadyPresent) {
+            merged.push(recent.msg);
+          }
+        }
+
+        setMessages(merged);
       } else if (leadId) {
         const msgs = await whatsappService.getMessages(leadId);
         setMessages(msgs);
@@ -454,6 +520,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
     const duration = recordingSeconds;
     const recorder = mediaRecorderRef.current;
+    const currentChatKey = selectedLead?.id || unlinkedContact?.id || '';
 
     recorder.onstop = async () => {
       recorder.stream.getTracks().forEach((track) => track.stop());
@@ -469,14 +536,15 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         if (!base64Audio) return;
 
         const targetPhone = isUnlinked && unlinkedContact 
-          ? (unlinkedContact.rawPhone || unlinkedContact.telefone)
+          ? (unlinkedContact.rawPhone || unlinkedContact.remoteJid || unlinkedContact.telefone)
           : selectedLead?.telefone;
 
         if (!targetPhone) return;
 
+        const tempId = `optimistic-audio-${Date.now()}`;
         const optimisticMsg: WhatsAppMessage = {
-          id: `optimistic-audio-${Date.now()}`,
-          leadId: selectedLead?.id || unlinkedContact?.id || '',
+          id: tempId,
+          leadId: currentChatKey,
           fromMe: true,
           text: '🎤 Mensagem de áudio',
           mediaType: 'audio',
@@ -485,10 +553,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           timestamp: new Date().toISOString(),
           status: 'delivered',
         };
+        recentSentMessagesRef.current.push({ chatKey: currentChatKey, msg: optimisticMsg, sentAt: Date.now() });
         setMessages((prev) => [...prev, optimisticMsg]);
 
         try {
-          await whatsappService.sendAudioMessage(
+          const sentMsg = await whatsappService.sendAudioMessage(
             session,
             targetPhone,
             base64Audio,
@@ -496,8 +565,22 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             selectedLead?.id,
             duration
           );
+          if (!sentMsg) {
+            throw new Error('Evolution API rejected audio message');
+          }
+          const updatedMsg: WhatsAppMessage = {
+            ...optimisticMsg,
+            id: sentMsg.id || tempId,
+            audioUrl: base64Audio,
+          };
+          recentSentMessagesRef.current = recentSentMessagesRef.current.map(item =>
+            item.msg.id === tempId ? { ...item, msg: updatedMsg, sentAt: Date.now() } : item
+          );
+          setMessages((prev) => prev.map((m) => (m.id === tempId ? updatedMsg : m)));
         } catch (err) {
           console.error('Falha ao enviar áudio:', err);
+          recentSentMessagesRef.current = recentSentMessagesRef.current.filter(item => item.msg.id !== tempId);
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
           alert('Erro ao enviar áudio.');
         }
       };
@@ -533,14 +616,16 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     setIsSending(true);
 
     if (isUnlinked && unlinkedContact) {
+      const tempId = `unlinked-msg-${Date.now()}`;
       const optimisticMsg: WhatsAppMessage = {
-        id: `unlinked-msg-${Date.now()}`,
+        id: tempId,
         leadId: unlinkedContact.id,
         fromMe: true,
         text: textToSend,
         timestamp: new Date().toISOString(),
         status: 'delivered'
       };
+      recentSentMessagesRef.current.push({ chatKey: unlinkedContact.id, msg: optimisticMsg, sentAt: Date.now() });
       setMessages(prev => [...prev, optimisticMsg]);
 
       try {
@@ -561,14 +646,16 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     }
 
     if (selectedLead) {
+      const tempId = `lead-msg-${Date.now()}`;
       const optimisticMsg: WhatsAppMessage = {
-        id: `lead-msg-${Date.now()}`,
+        id: tempId,
         leadId: selectedLead.id,
         fromMe: true,
         text: textToSend,
         timestamp: new Date().toISOString(),
         status: 'delivered'
       };
+      recentSentMessagesRef.current.push({ chatKey: selectedLead.id, msg: optimisticMsg, sentAt: Date.now() });
       setMessages(prev => [...prev, optimisticMsg]);
 
       try {
@@ -801,15 +888,16 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                       }`}
                     >
                       <div className="relative">
-                        {contact.profilePicUrl ? (
+                        {contact.profilePicUrl && !brokenPics[contact.profilePicUrl] ? (
                           <img 
                             src={contact.profilePicUrl} 
                             alt={contact.nome} 
+                            onError={() => setBrokenPics(prev => ({ ...prev, [contact.profilePicUrl!]: true }))}
                             className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
                           />
                         ) : (
                           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
-                            {contact.nome.slice(0, 2).toUpperCase()}
+                            {contact.nome.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'WA'}
                           </div>
                         )}
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
@@ -859,15 +947,16 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     >
                       {/* Lead Avatar */}
                       <div className="relative">
-                        {realChat?.profilePicUrl ? (
+                        {realChat?.profilePicUrl && !brokenPics[realChat.profilePicUrl] ? (
                           <img 
                             src={realChat.profilePicUrl}
                             alt={lead.nome}
+                            onError={() => setBrokenPics(prev => ({ ...prev, [realChat.profilePicUrl]: true }))}
                             className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
                           />
                         ) : (
                           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
-                            {lead.nome.slice(0, 2).toUpperCase()}
+                            {lead.nome.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'LD'}
                           </div>
                         )}
                         {realChat ? (
@@ -937,21 +1026,29 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               {/* Left: Avatar & Contact Info */}
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="relative flex-shrink-0">
-                  {(isUnlinked ? unlinkedContact?.profilePicUrl : (realChatMap.get(selectedLead?.id || '')?.profilePicUrl)) ? (
-                    <img 
-                      src={isUnlinked ? unlinkedContact!.profilePicUrl : realChatMap.get(selectedLead!.id)!.profilePicUrl}
-                      alt={isUnlinked ? unlinkedContact!.nome : selectedLead!.nome}
-                      className="w-9 h-9 rounded-2xl object-cover shadow-xs"
-                    />
-                  ) : (
-                    <div className={`w-9 h-9 rounded-2xl text-white flex items-center justify-center font-bold text-xs shadow-xs ${
-                      isUnlinked 
-                        ? 'bg-gradient-to-tr from-amber-600 to-orange-500' 
-                        : 'bg-gradient-to-tr from-brand-600 to-amber-500'
-                    }`}>
-                      {isUnlinked ? unlinkedContact!.nome.slice(0, 2).toUpperCase() : selectedLead!.nome.slice(0, 2).toUpperCase()}
-                    </div>
-                  )}
+                  {(() => {
+                    const headerPic = isUnlinked ? unlinkedContact?.profilePicUrl : realChatMap.get(selectedLead?.id || '')?.profilePicUrl;
+                    const headerName = isUnlinked ? unlinkedContact!.nome : selectedLead!.nome;
+                    if (headerPic && !brokenPics[headerPic]) {
+                      return (
+                        <img 
+                          src={headerPic}
+                          alt={headerName}
+                          onError={() => setBrokenPics(prev => ({ ...prev, [headerPic]: true }))}
+                          className="w-9 h-9 rounded-2xl object-cover shadow-xs"
+                        />
+                      );
+                    }
+                    return (
+                      <div className={`w-9 h-9 rounded-2xl text-white flex items-center justify-center font-bold text-xs shadow-xs ${
+                        isUnlinked 
+                          ? 'bg-gradient-to-tr from-amber-600 to-orange-500' 
+                          : 'bg-gradient-to-tr from-brand-600 to-amber-500'
+                      }`}>
+                        {headerName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'WA'}
+                      </div>
+                    );
+                  })()}
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
                 </div>
 
@@ -1058,18 +1155,6 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   </>
                 )}
 
-                {/* Open External WhatsApp */}
-                <a
-                  href={`https://wa.me/55${(isUnlinked ? unlinkedContact!.telefone : selectedLead!.telefone).replace(/\D/g, '')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Abrir no WhatsApp Web externo"
-                  className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600" />
-                  <ExternalLink className="w-3 h-3 text-emerald-500" />
-                </a>
-
                 {/* Toggle Right CRM Drawer */}
                 <button
                   onClick={() => setShowRightDrawer(prev => !prev)}
@@ -1100,46 +1185,54 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   <div className="animate-spin rounded-full h-6 w-6 border-2 border-emerald-500 border-t-transparent" />
                 </div>
               ) : (
-                messages.map(msg => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.fromMe ? 'justify-end' : 'justify-start'} animate-in fade-in duration-100`}
-                  >
+                messages.map(msg => {
+                  const contactOrLeadName = isUnlinked ? unlinkedContact?.nome : selectedLead?.nome;
+                  const isContactNameNumeric = contactOrLeadName ? /^\+?[\d\s().-]+$/.test(contactOrLeadName.trim()) : true;
+                  const senderDisplay = !isContactNameNumeric
+                    ? contactOrLeadName
+                    : (msg.senderName || undefined);
+
+                  return (
                     <div
-                      className={`max-w-[78%] sm:max-w-[65%] rounded-2xl px-4 py-2.5 shadow-xs relative text-xs leading-relaxed ${
-                        msg.fromMe
-                          ? 'bg-emerald-600 text-white rounded-tr-xs'
-                          : 'bg-white text-slate-900 border border-slate-200/80 rounded-tl-xs'
-                      }`}
+                      key={msg.id}
+                      className={`flex ${msg.fromMe ? 'justify-end' : 'justify-start'} animate-in fade-in duration-100`}
                     >
-                      {/* Sender Name if incoming */}
-                      {!msg.fromMe && (msg.senderName || (isUnlinked ? unlinkedContact?.nome : selectedLead?.nome)) && (
-                        <p className="text-[10px] font-bold text-emerald-700 mb-1">
-                          {msg.senderName || (isUnlinked ? unlinkedContact?.nome : selectedLead?.nome)}
-                        </p>
-                      )}
-
-                      {/* Message Content or Audio Message Player */}
-                      {msg.mediaType === 'audio' || msg.text?.includes('🎤') ? (
-                        <AudioMessagePlayer message={msg} sessionName={session} />
-                      ) : (
-                        <p className="whitespace-pre-wrap">{msg.text}</p>
-                      )}
-
-                      {/* Footer: Timestamp & Double Check */}
-                      <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${
-                        msg.fromMe ? 'text-emerald-100' : 'text-slate-400'
-                      }`}>
-                        <span>
-                          {new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        {msg.fromMe && (
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-200" />
+                      <div
+                        className={`max-w-[78%] sm:max-w-[65%] rounded-2xl px-4 py-2.5 shadow-xs relative text-xs leading-relaxed ${
+                          msg.fromMe
+                            ? 'bg-emerald-600 text-white rounded-tr-xs'
+                            : 'bg-white text-slate-900 border border-slate-200/80 rounded-tl-xs'
+                        }`}
+                      >
+                        {/* Sender Name if incoming */}
+                        {!msg.fromMe && senderDisplay && (
+                          <p className="text-[10px] font-bold text-emerald-700 mb-1">
+                            {senderDisplay}
+                          </p>
                         )}
+
+                        {/* Message Content or Audio Message Player */}
+                        {msg.mediaType === 'audio' || msg.text?.includes('🎤') ? (
+                          <AudioMessagePlayer message={msg} sessionName={session} />
+                        ) : (
+                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                        )}
+
+                        {/* Footer: Timestamp & Double Check */}
+                        <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${
+                          msg.fromMe ? 'text-emerald-100' : 'text-slate-400'
+                        }`}>
+                          <span>
+                            {new Date(msg.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {msg.fromMe && (
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-200" />
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
 
               {/* Scroll anchor */}
