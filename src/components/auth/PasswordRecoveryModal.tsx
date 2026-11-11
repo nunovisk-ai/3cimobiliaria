@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, KeyRound, Check, X, AlertCircle, ArrowLeft, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Mail, KeyRound, Check, AlertCircle, ArrowLeft, Eye, EyeOff, ShieldCheck, X } from 'lucide-react';
 import { usersService } from '../../services/usersService';
 import { supabase } from '../../lib/supabase';
 
@@ -22,7 +22,6 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [sentCodeHint, setSentCodeHint] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -35,7 +34,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
 
   const isPasswordValid = hasMinLength && hasUppercase && hasNumber && hasSpecialChar && passwordsMatch;
 
-  // Step 1: Send verification code
+  // Step 1: Send verification code via Resend
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
@@ -44,19 +43,8 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
     setIsLoading(true);
 
     try {
-      // 1. Generate 6-digit OTP code in database
-      const generatedCode = await usersService.generateVerificationCode(email, 'recuperacao');
-      setSentCodeHint(generatedCode);
-
-      // 2. Also trigger native Supabase recovery email
-      try {
-        await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-          redirectTo: 'https://grupo3c.vitrai.com.br',
-        });
-      } catch (mailErr) {
-        console.warn('Native email trigger notice:', mailErr);
-      }
-
+      // 1. Generate 6-digit OTP code in database and dispatch via Resend
+      await usersService.generateVerificationCode(email, 'recuperacao');
       setStep(2);
     } catch (err: any) {
       setErrorMsg(err.message || 'Não foi possível enviar o código. Verifique se o e-mail está cadastrado.');
@@ -65,7 +53,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
     }
   };
 
-  // Step 2: Validate code & change password
+  // Step 2: Validate code & change password in Supabase
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isPasswordValid) return;
@@ -77,7 +65,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
       // 1. Verify 6-digit code
       const isValidCode = await usersService.verifyVerificationCode(email, code, 'recuperacao');
       if (!isValidCode) {
-        throw new Error('Código de verificação incorreto ou expirado. Solicite um novo código.');
+        throw new Error('Código de verificação incorreto ou expirado. Verifique os 6 dígitos recebidos no seu e-mail.');
       }
 
       // 2. Find user in profiles
@@ -91,12 +79,12 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
         throw new Error('Usuário não localizado no sistema.');
       }
 
-      // 3. Update password via admin RPC
+      // 3. Update password via admin RPC in Supabase Auth & Profile
       await usersService.adminSetUserPassword(profile.id, newPassword);
 
       setStep(3);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Falha ao redefinir senha.');
+      setErrorMsg(err.message || 'Falha ao redefinir senha no Supabase.');
     } finally {
       setIsLoading(false);
     }
@@ -109,16 +97,18 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
     setNewPassword('');
     setConfirmPassword('');
     setErrorMsg(null);
-    setSentCodeHint(null);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-8">
+      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 sm:p-8 overflow-hidden">
         
+        {/* Top Accent Stripe - cleanly clipped inside rounded container */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-brand-500 via-amber-500 to-brand-600 rounded-t-3xl" />
+
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5 pt-1">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-orange-100 text-brand-600">
               <KeyRound className="w-5 h-5" />
@@ -130,7 +120,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
           </div>
           <button
             onClick={handleClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -148,7 +138,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
         {step === 1 && (
           <form onSubmit={handleSendCode} className="space-y-4">
             <p className="text-xs text-slate-600 leading-relaxed">
-              Informe o e-mail cadastrado na sua conta. Enviaremos um código de verificação para que você possa definir sua nova senha.
+              Informe seu e-mail cadastrado no CRM. Enviaremos um <strong>código de verificação de 6 dígitos</strong> para o seu e-mail.
             </p>
 
             <div>
@@ -165,7 +155,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu.email@exemplo.com.br"
                   required
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                 />
               </div>
             </div>
@@ -173,51 +163,58 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
             <button
               type="submit"
               disabled={isLoading || !email.trim()}
-              className="w-full py-2.5 px-4 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs shadow-md shadow-brand-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              className="w-full py-2.5 px-4 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold rounded-xl text-xs shadow-md shadow-brand-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
-              {isLoading ? 'Enviando código...' : 'Receber Código de Verificação'}
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Enviando código...
+                </span>
+              ) : (
+                'Receber Código no E-mail'
+              )}
             </button>
           </form>
         )}
 
-        {/* STEP 2: Enter Code and New Password */}
+        {/* STEP 2: Enter Code from Email and New Password */}
         {step === 2 && (
           <form onSubmit={handleResetPassword} className="space-y-4">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-              <p className="font-semibold mb-0.5">Código enviado com sucesso!</p>
-              <p className="text-[11px] text-amber-700">
-                Verifique o código de 6 dígitos no seu e-mail <strong>{email}</strong>.
+            
+            {/* Clean Info Box: Code is NEVER displayed on screen */}
+            <div className="p-3.5 bg-orange-50/90 border border-orange-200/80 rounded-xl text-xs text-orange-950">
+              <div className="flex items-center gap-2 font-semibold text-orange-900 mb-1">
+                <Mail className="w-4 h-4 text-brand-600" />
+                <span>Código enviado por e-mail!</span>
+              </div>
+              <p className="text-[11px] text-orange-800 leading-relaxed">
+                Enviamos um código de segurança de 6 dígitos para o e-mail <strong>{email}</strong>. Verifique sua caixa de entrada e pasta de spam.
               </p>
-              {sentCodeHint && (
-                <div className="mt-2 pt-2 border-t border-amber-200/80 flex items-center justify-between text-[11px]">
-                  <span>Código de validação:</span>
-                  <span className="font-mono font-bold text-brand-700 tracking-wider bg-white px-2 py-0.5 rounded border border-amber-300">
-                    {sentCodeHint}
-                  </span>
-                </div>
-              )}
             </div>
 
             {/* Code Field */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Código de Verificação (6 dígitos)
+                Código de 6 Dígitos (Recebido no e-mail) *
               </label>
               <input
                 type="text"
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                placeholder="123456"
+                placeholder="Ex: 849201"
                 required
-                className="w-full text-center py-2.5 tracking-[0.5em] font-mono text-base font-bold bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                className="w-full text-center py-2.5 tracking-[0.5em] font-mono text-base font-bold bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
               />
             </div>
 
             {/* New Password */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Nova Senha
+                Nova Senha *
               </label>
               <div className="relative">
                 <input
@@ -226,12 +223,12 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Digite sua nova senha"
                   required
-                  className="w-full pr-10 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                  className="w-full pr-10 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -241,7 +238,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
             {/* Confirm New Password */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Confirmar Nova Senha
+                Confirmar Nova Senha *
               </label>
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -249,7 +246,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Repita a nova senha"
                 required
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all"
               />
             </div>
 
@@ -283,11 +280,11 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl text-xs transition-colors flex items-center gap-1"
+                className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl text-xs transition-colors flex items-center gap-1 cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Voltar
@@ -295,9 +292,9 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
               <button
                 type="submit"
                 disabled={isLoading || !isPasswordValid || code.length !== 6}
-                className="flex-1 py-2.5 px-4 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs shadow-md shadow-brand-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer"
+                className="flex-1 py-2.5 px-4 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-semibold rounded-xl text-xs shadow-md shadow-brand-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer"
               >
-                {isLoading ? 'Validando...' : 'Salvar Nova Senha'}
+                {isLoading ? 'Salvando no Supabase...' : 'Salvar Nova Senha'}
               </button>
             </div>
           </form>
@@ -306,13 +303,13 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
         {/* STEP 3: Success */}
         {step === 3 && (
           <div className="text-center py-4 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
               <Check className="w-6 h-6 stroke-[3]" />
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-800">Senha Alterada com Sucesso!</h3>
               <p className="text-xs text-slate-500 mt-1">
-                Sua nova senha foi gravada com segurança. Agora você já pode fazer login no CRM.
+                Sua nova senha foi salva no Supabase. Agora você já pode fazer login no CRM de Vendas.
               </p>
             </div>
             <button

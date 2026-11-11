@@ -51,7 +51,7 @@ export const LoginCard: React.FC = () => {
       <div className="absolute inset-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:24px_24px] opacity-40 pointer-events-none" />
 
       {/* Main Login Card */}
-      <div className="relative w-full max-w-[420px] bg-white rounded-3xl border border-slate-200/90 shadow-xl shadow-slate-200/50 p-8 sm:p-10 z-10 transition-all">
+      <div className="relative w-full max-w-[420px] bg-white rounded-3xl border border-slate-200/90 shadow-xl shadow-slate-200/50 p-8 sm:p-10 z-10 transition-all overflow-hidden">
         
         {/* Subtle Brand Accent Stripe */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-brand-500 via-amber-500 to-brand-600 rounded-t-3xl" />
