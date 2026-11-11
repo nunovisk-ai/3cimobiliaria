@@ -133,9 +133,9 @@ export const whatsappService = {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            rejectCall: true,
-            msgCall: 'Grupo 3C: Atendimento por mensagem.',
-            groupsIgnore: true,
+            rejectCall: false, // Calls are allowed (brokers call leads)
+            msgCall: '',
+            groupsIgnore: true, // Keep groups ignored
             alwaysOnline: false,
             readMessages: true,
             readStatus: false,
@@ -149,58 +149,211 @@ export const whatsappService = {
   },
 
   /**
-   * Fetches real WhatsApp chats from Evolution API for the broker's session
+   * Fetches real WhatsApp chats, unifies LID with phone JIDs, and enriches with contact names
    */
   async getRealChats(sessionName: string = '3c_vendedor'): Promise<any[]> {
     try {
-      const res = await fetch(`${EVOLUTION_API_URL}/chat/findChats/${sessionName}`, {
-        method: 'POST',
-        headers: {
-          'apikey': EVOLUTION_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) return [];
-      const chats = await res.json();
-      if (!Array.isArray(chats)) return [];
+      const [chatsRes, contactsRes] = await Promise.allSettled([
+        fetch(`${EVOLUTION_API_URL}/chat/findChats/${sessionName}`, {
+          method: 'POST',
+          headers: {
+            'apikey': EVOLUTION_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        }),
+        fetch(`${EVOLUTION_API_URL}/chat/findContacts/${sessionName}`, {
+          method: 'POST',
+          headers: {
+            'apikey': EVOLUTION_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({}),
+        }),
+      ]);
 
-      // Filter out WhatsApp groups (@g.us) to keep only customer leads (anti-spam)
-      return chats
-        .filter((c: any) => c.remoteJid && !c.remoteJid.includes('@g.us') && !c.remoteJid.includes('status@broadcast'))
-        .map((c: any) => {
-          const rawPhone = c.remoteJid.split('@')[0];
-          let phoneClean = rawPhone.replace(/\D/g, '');
+      let chats: any[] = [];
+      if (chatsRes.status === 'fulfilled' && chatsRes.value.ok) {
+        const raw = await chatsRes.value.json();
+        if (Array.isArray(raw)) chats = raw;
+      }
+
+      const contactsMap = new Map<string, { name: string; profilePicUrl?: string | null }>();
+      if (contactsRes.status === 'fulfilled' && contactsRes.value.ok) {
+        try {
+          const rawContacts = await contactsRes.value.json();
+          if (Array.isArray(rawContacts)) {
+            for (const c of rawContacts) {
+              const name = c.pushName || c.name || null;
+              if (name && c.remoteJid) {
+                contactsMap.set(c.remoteJid, { name, profilePicUrl: c.profilePicUrl });
+                if (c.remoteJid.includes('@s.whatsapp.net')) {
+                  const digits = c.remoteJid.split('@')[0].replace(/\D/g, '');
+                  contactsMap.set(digits, { name, profilePicUrl: c.profilePicUrl });
+                  if (digits.length >= 8) {
+                    contactsMap.set(digits.slice(-8), { name, profilePicUrl: c.profilePicUrl });
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Filter out WhatsApp groups and status broadcasts
+      const nonGroups = chats.filter(
+        (c: any) => c.remoteJid && !c.remoteJid.includes('@g.us') && !c.remoteJid.includes('broadcast')
+      );
+
+      // Build LID to Phone JID mapping
+      const lidToPhoneMap = new Map<string, string>();
+      for (const c of nonGroups) {
+        const alt = c.lastMessage?.key?.remoteJidAlt || c.lastMessage?.key?.participantAlt;
+        if (c.remoteJid.includes('@lid') && alt && alt.includes('@s.whatsapp.net')) {
+          lidToPhoneMap.set(c.remoteJid, alt);
+        }
+      }
+
+      // Unify chats by canonical phone JID so incoming LID and outgoing phone JID merge into one
+      const unifiedMap = new Map<string, {
+        canonicalJid: string;
+        allJids: string[];
+        chat: any;
+        lastTimestamp: number;
+      }>();
+
+      for (const c of nonGroups) {
+        let canonicalJid = c.remoteJid;
+        const isLid = c.remoteJid.includes('@lid');
+
+        if (isLid) {
+          const alt = c.lastMessage?.key?.remoteJidAlt || c.lastMessage?.key?.participantAlt || lidToPhoneMap.get(c.remoteJid);
+          if (alt && alt.includes('@s.whatsapp.net')) {
+            canonicalJid = alt;
+          }
+        }
+
+        const existing = unifiedMap.get(canonicalJid);
+        const curTimestamp = new Date(c.updatedAt || c.lastMessage?.messageTimestamp * 1000 || 0).getTime();
+
+        if (!existing) {
+          unifiedMap.set(canonicalJid, {
+            canonicalJid,
+            allJids: [c.remoteJid],
+            chat: c,
+            lastTimestamp: curTimestamp,
+          });
+        } else {
+          if (!existing.allJids.includes(c.remoteJid)) {
+            existing.allJids.push(c.remoteJid);
+          }
+          if (curTimestamp > existing.lastTimestamp) {
+            existing.chat = c;
+            existing.lastTimestamp = curTimestamp;
+          }
+        }
+      }
+
+      // Format unified conversations
+      const result = Array.from(unifiedMap.values()).map(({ canonicalJid, allJids, chat: c }) => {
+        let rawPhone = '';
+        let formattedPhone = '';
+
+        if (canonicalJid.includes('@s.whatsapp.net')) {
+          const raw = canonicalJid.split('@')[0].replace(/\D/g, '');
+          rawPhone = raw;
+          let phoneClean = raw;
           if (phoneClean.startsWith('55') && phoneClean.length >= 12) {
             phoneClean = phoneClean.slice(2);
           }
-          const ddd = phoneClean.slice(0, 2);
-          const num = phoneClean.slice(2);
-          const formattedPhone = num.length === 9 
-            ? `(${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`
-            : `(${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
-
-          let lastMsg = '';
-          const lastTime = c.updatedAt || new Date().toISOString();
-
-          if (c.lastMessage?.message) {
-            const m = c.lastMessage.message;
-            lastMsg = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || (m.audioMessage ? '🎤 Áudio' : 'Mensagem');
+          if (phoneClean.length >= 10 && phoneClean.length <= 11) {
+            const ddd = phoneClean.slice(0, 2);
+            const num = phoneClean.slice(2);
+            formattedPhone = num.length === 9 
+              ? `(${ddd}) ${num.slice(0, 5)}-${num.slice(5)}`
+              : `(${ddd}) ${num.slice(0, 4)}-${num.slice(4)}`;
+          } else {
+            formattedPhone = raw;
           }
+        }
 
-          return {
-            id: c.remoteJid,
-            remoteJid: c.remoteJid,
-            name: c.pushName || c.name || formattedPhone,
-            pushName: c.pushName,
-            phone: formattedPhone,
-            rawPhone,
-            unreadCount: c.unreadCount || 0,
-            profilePicUrl: c.profilePicUrl,
-            lastMessage: lastMsg,
-            lastMessageTimestamp: lastTime,
-          };
-        });
+        // Resolve Contact Name: 
+        // 1. from contacts map by canonicalJid, allJids, or phone digits
+        // 2. from incoming message pushName (when fromMe is false)
+        // 3. from chat pushName
+        let resolvedName = '';
+        for (const jid of [canonicalJid, ...allJids]) {
+          const info = contactsMap.get(jid);
+          if (info?.name) {
+            resolvedName = info.name;
+            break;
+          }
+        }
+
+        if (!resolvedName && rawPhone) {
+          const info = contactsMap.get(rawPhone) || (rawPhone.length >= 8 ? contactsMap.get(rawPhone.slice(-8)) : null);
+          if (info?.name) resolvedName = info.name;
+        }
+
+        if (!resolvedName && c.lastMessage?.key?.fromMe === false && c.lastMessage?.pushName) {
+          resolvedName = c.lastMessage.pushName;
+        }
+
+        if (!resolvedName && c.pushName && c.pushName !== 'Você') {
+          resolvedName = c.pushName;
+        }
+
+        if (!resolvedName) {
+          resolvedName = formattedPhone || 'Contato WhatsApp';
+        }
+
+        // Profile picture
+        let picUrl = c.profilePicUrl || null;
+        if (!picUrl) {
+          for (const jid of [canonicalJid, ...allJids]) {
+            const info = contactsMap.get(jid);
+            if (info?.profilePicUrl) {
+              picUrl = info.profilePicUrl;
+              break;
+            }
+          }
+        }
+
+        // Last message text
+        let lastMsg = '';
+        const lastTime = c.updatedAt || (c.lastMessage?.messageTimestamp ? new Date(c.lastMessage.messageTimestamp * 1000).toISOString() : new Date().toISOString());
+
+        if (c.lastMessage?.message) {
+          const m = c.lastMessage.message;
+          lastMsg = m.conversation || 
+                    m.extendedTextMessage?.text || 
+                    m.imageMessage?.caption || 
+                    (m.audioMessage ? '🎤 Mensagem de áudio' : '') ||
+                    (m.imageMessage ? '📷 Imagem' : '') ||
+                    (m.documentMessage ? '📄 Documento' : '') ||
+                    '';
+        }
+
+        return {
+          id: canonicalJid,
+          remoteJid: canonicalJid,
+          allJids: Array.from(new Set([canonicalJid, ...allJids])),
+          name: resolvedName,
+          pushName: resolvedName,
+          phone: formattedPhone,
+          rawPhone: rawPhone,
+          unreadCount: c.unreadCount || 0,
+          profilePicUrl: picUrl,
+          lastMessage: lastMsg,
+          lastMessageTimestamp: lastTime,
+        };
+      });
+
+      // Sort by latest message descending
+      result.sort((a, b) => new Date(b.lastMessageTimestamp).getTime() - new Date(a.lastMessageTimestamp).getTime());
+      return result;
     } catch (err) {
       console.warn('Could not fetch real chats from Evolution API:', err);
       return [];
@@ -208,47 +361,67 @@ export const whatsappService = {
   },
 
   /**
-   * Fetches real messages for a specific WhatsApp chat
+   * Fetches real messages for a specific WhatsApp chat (supports single JID or array of unified JIDs)
    */
-  async getRealMessages(sessionName: string, remoteJid: string, leadId?: string): Promise<WhatsAppMessage[]> {
+  async getRealMessages(sessionName: string, remoteJids: string | string[], leadId?: string): Promise<WhatsAppMessage[]> {
+    const jidList = Array.isArray(remoteJids) ? remoteJids : [remoteJids];
     let evolutionMsgs: WhatsAppMessage[] = [];
-    try {
-      const res = await fetch(`${EVOLUTION_API_URL}/chat/findMessages/${sessionName}`, {
-        method: 'POST',
-        headers: {
-          'apikey': EVOLUTION_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          where: {
-            key: {
-              remoteJid: remoteJid,
-            },
-          },
-        }),
-      });
 
-      if (res.ok) {
-        const data = await res.json();
-        const records = data.messages?.records || (Array.isArray(data) ? data : []);
-        evolutionMsgs = records.map((m: any) => {
-          const msgObj = m.message || {};
-          const text = msgObj.conversation || 
-                       msgObj.extendedTextMessage?.text || 
-                       msgObj.imageMessage?.caption || 
-                       (msgObj.audioMessage ? '🎤 Mensagem de áudio' : '') ||
-                       (msgObj.imageMessage ? '📷 Imagem' : '') ||
-                       (msgObj.documentMessage ? '📄 Documento' : '') ||
-                       '';
-          return {
-            id: m.key?.id || m.id || String(Math.random()),
-            leadId: leadId || remoteJid,
-            fromMe: Boolean(m.key?.fromMe),
-            text: text,
-            timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
-            status: m.status === 'READ' ? 'read' : 'delivered',
-          };
-        }).filter((m: any) => m.text);
+    try {
+      const results = await Promise.allSettled(
+        jidList.map(jid => 
+          fetch(`${EVOLUTION_API_URL}/chat/findMessages/${sessionName}`, {
+            method: 'POST',
+            headers: {
+              'apikey': EVOLUTION_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              where: {
+                key: {
+                  remoteJid: jid,
+                },
+              },
+            }),
+          }).then(r => r.ok ? r.json() : [])
+        )
+      );
+
+      for (const res of results) {
+        if (res.status === 'fulfilled') {
+          const data = res.value;
+          const records = data.messages?.records || (Array.isArray(data) ? data : []);
+          const parsed = records.map((m: any) => {
+            const msgObj = m.message || {};
+            const isAudio = Boolean(msgObj.audioMessage);
+            const isImage = Boolean(msgObj.imageMessage);
+            const isDoc = Boolean(msgObj.documentMessage);
+            const audioSec = msgObj.audioMessage?.seconds || 0;
+
+            const text = msgObj.conversation || 
+                         msgObj.extendedTextMessage?.text || 
+                         msgObj.imageMessage?.caption || 
+                         (isAudio ? '🎤 Mensagem de áudio' : '') ||
+                         (isImage ? '📷 Imagem' : '') ||
+                         (isDoc ? '📄 Documento' : '') ||
+                         '';
+
+            return {
+              id: m.key?.id || m.id || String(Math.random()),
+              leadId: leadId || jidList[0],
+              fromMe: Boolean(m.key?.fromMe),
+              senderName: (!m.key?.fromMe && m.pushName) ? m.pushName : undefined,
+              text: text,
+              mediaType: isAudio ? 'audio' : (isImage ? 'image' : (isDoc ? 'document' : undefined)),
+              audioDuration: isAudio ? audioSec : undefined,
+              audioUrl: msgObj.audioMessage?.url || undefined,
+              timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
+              status: m.status === 'READ' ? 'read' : 'delivered',
+            };
+          }).filter((m: any) => m.text || m.mediaType);
+
+          evolutionMsgs.push(...parsed);
+        }
       }
     } catch (err) {
       console.warn('Could not fetch messages from Evolution API:', err);
@@ -278,6 +451,116 @@ export const whatsappService = {
 
     unique.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     return unique;
+  },
+
+  /**
+   * Fetches the base64 data for an audio or media message from Evolution API
+   */
+  async getMediaBase64(sessionName: string, messageId: string): Promise<{ base64: string; mimetype: string } | null> {
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${sessionName}`, {
+        method: 'POST',
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: {
+            key: {
+              id: messageId,
+            },
+          },
+          convertToMp4: false,
+        }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return {
+        base64: data.base64,
+        mimetype: data.mimetype || 'audio/ogg; codecs=opus',
+      };
+    } catch (err) {
+      console.warn('Error fetching media base64 from Evolution API:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Sends a voice note / audio message via Evolution API and logs into Supabase
+   */
+  async sendAudioMessage(
+    sessionName: string,
+    phoneNumber: string,
+    base64Audio: string,
+    corretorId?: string,
+    leadId?: string,
+    durationSeconds: number = 0
+  ): Promise<WhatsAppMessage | null> {
+    try {
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
+      const ddiPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+      const res = await fetch(`${EVOLUTION_API_URL}/message/sendWhatsAppAudio/${sessionName}`, {
+        method: 'POST',
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          number: ddiPhone,
+          audio: base64Audio,
+        }),
+      });
+
+      const resData = res.ok ? await res.json() : null;
+      const msgId = resData?.key?.id || `audio-${Date.now()}`;
+      const timestamp = new Date().toISOString();
+
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      const validLeadId = isUuid(leadId) ? leadId : null;
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from('whatsapp_messages').insert([{
+            lead_id: validLeadId,
+            corretor_id: corretorId || null,
+            remetente_tipo: 'corretor',
+            mensagem: '🎤 Mensagem de áudio',
+            midia_url: null,
+            enviada_at: timestamp,
+            status_envio: 'sent',
+          }]);
+        } catch (e) {
+          // ignore
+        }
+
+        if (validLeadId) {
+          try {
+            await supabase.from('leads').update({
+              ultima_interacao_at: timestamp,
+            }).eq('id', validLeadId);
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
+      return {
+        id: msgId,
+        leadId: leadId || ddiPhone,
+        corretorId: corretorId,
+        fromMe: true,
+        text: '🎤 Mensagem de áudio',
+        mediaType: 'audio',
+        audioDuration: durationSeconds,
+        audioUrl: base64Audio,
+        timestamp: timestamp,
+        status: 'delivered',
+      };
+    } catch (err) {
+      console.error('Error sending audio message:', err);
+      return null;
+    }
   },
 
   /**

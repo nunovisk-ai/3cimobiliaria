@@ -14,13 +14,17 @@ import {
   Bot, 
   User, 
   Info, 
-  ChevronRight,
-  Wifi,
-  WifiOff,
-  UserPlus,
+  ChevronRight, 
+  Wifi, 
+  WifiOff, 
+  UserPlus, 
+  Edit3, 
+  AlertCircle, 
+  Play, 
+  Pause, 
+  Mic, 
+  Trash2,
   Save,
-  Edit3,
-  AlertCircle,
   Check
 } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
@@ -50,8 +54,9 @@ const STAGE_CONFIG: Record<FunnelStage, { label: string; color: string; badge: s
 };
 
 interface UnlinkedContact {
-  id: string; // remoteJid
+  id: string; // canonical remoteJid
   remoteJid: string;
+  allJids: string[];
   nome: string;
   telefone: string;
   rawPhone: string;
@@ -60,6 +65,121 @@ interface UnlinkedContact {
   unreadCount?: number;
   profilePicUrl?: string;
 }
+
+/**
+ * Embedded Audio Message Player with progressive playback & time format
+ */
+const AudioMessagePlayer: React.FC<{ message: WhatsAppMessage; sessionName: string }> = ({ message, sessionName }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(message.audioDuration || 0);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const togglePlay = async () => {
+    if (!audioRef.current) {
+      setIsLoadingAudio(true);
+      try {
+        let src = message.audioUrl;
+        if (!src || !src.startsWith('data:')) {
+          const media = await whatsappService.getMediaBase64(sessionName, message.id);
+          if (media?.base64) {
+            src = `data:${media.mimetype};base64,${media.base64}`;
+          }
+        }
+        if (src) {
+          const audio = new Audio(src);
+          audioRef.current = audio;
+          audio.onloadedmetadata = () => {
+            if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
+              setDuration(Math.round(audio.duration));
+            }
+          };
+          audio.ontimeupdate = () => {
+            setCurrentTime(audio.currentTime);
+          };
+          audio.onended = () => {
+            setIsPlaying(false);
+            setCurrentTime(0);
+          };
+          await audio.play();
+          setIsPlaying(true);
+        }
+      } catch (err) {
+        console.warn('Erro ao reproduzir áudio:', err);
+      } finally {
+        setIsLoadingAudio(false);
+      }
+      return;
+    }
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const formatSec = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className="flex items-center gap-3 py-1 min-w-[200px] sm:min-w-[240px]">
+      <button
+        type="button"
+        onClick={togglePlay}
+        disabled={isLoadingAudio}
+        className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 cursor-pointer shadow-xs ${
+          message.fromMe
+            ? 'bg-white text-emerald-700 hover:bg-emerald-50'
+            : 'bg-emerald-600 text-white hover:bg-emerald-700'
+        }`}
+      >
+        {isLoadingAudio ? (
+          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+        ) : isPlaying ? (
+          <Pause className="w-4 h-4 fill-current" />
+        ) : (
+          <Play className="w-4 h-4 fill-current ml-0.5" />
+        )}
+      </button>
+
+      <div className="flex-1 min-w-0">
+        <div className="relative h-1.5 bg-black/15 rounded-full overflow-hidden cursor-pointer">
+          <div 
+            className={`h-full rounded-full transition-all ${message.fromMe ? 'bg-white' : 'bg-emerald-600'}`}
+            style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+          />
+        </div>
+        <div className={`flex justify-between items-center text-[10px] mt-1 font-mono ${
+          message.fromMe ? 'text-emerald-100' : 'text-slate-500'
+        }`}>
+          <span>{isPlaying ? formatSec(currentTime) : formatSec(duration)}</span>
+          <span className="flex items-center gap-0.5 font-sans">
+            <Mic className="w-3 h-3" />
+            Áudio
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   leads,
@@ -90,6 +210,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [showRightDrawer, setShowRightDrawer] = useState(true);
 
+  // Audio Recording States
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+
   // States to feed the lead's profile from chat (Alimentar Perfil)
   const [editRenda, setEditRenda] = useState<number | ''>('');
   const [editFgts, setEditFgts] = useState<number | ''>('');
@@ -101,8 +228,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const selectedLead = leads.find(l => l.id === selectedLeadId) || null;
-  const unlinkedContact = unlinkedContacts.find(c => c.id === selectedLeadId) || null;
+  const selectedLead = isConnected ? (leads.find(l => l.id === selectedLeadId) || null) : null;
+  const unlinkedContact = isConnected ? (unlinkedContacts.find(c => c.id === selectedLeadId) || null) : null;
   const isUnlinked = Boolean(unlinkedContact && !selectedLead);
 
   // Load real chats from Evolution API
@@ -122,6 +249,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         const cleanChatDigits = (chat.rawPhone || '').replace(/\D/g, '');
         const matchedLead = leads.find(l => {
           const leadDigits = (l.telefone || '').replace(/\D/g, '');
+          if (!leadDigits || !cleanChatDigits) return false;
           return leadDigits.slice(-8) === cleanChatDigits.slice(-8);
         });
 
@@ -131,6 +259,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           unlinkedList.push({
             id: chat.remoteJid,
             remoteJid: chat.remoteJid,
+            allJids: chat.allJids && chat.allJids.length > 0 ? chat.allJids : [chat.remoteJid],
             nome: chat.pushName || chat.name || chat.phone,
             telefone: chat.phone,
             rawPhone: chat.rawPhone,
@@ -147,8 +276,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
       // Auto-select first contact if none selected
       if (!selectedLeadId) {
-        if (leads.length > 0) setSelectedLeadId(leads[0].id);
-        else if (unlinkedList.length > 0) setSelectedLeadId(unlinkedList[0].id);
+        if (leads.length > 0 && chatMap.has(leads[0].id)) {
+          setSelectedLeadId(leads[0].id);
+        } else if (unlinkedList.length > 0) {
+          setSelectedLeadId(unlinkedList[0].id);
+        }
       }
     } catch (err) {
       console.warn('Erro ao carregar chats reais:', err);
@@ -189,28 +321,42 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   // Load messages whenever selected lead changes
   const loadMessages = async (leadIdOrJid: string, isContactUnlinked: boolean = false, isSilent: boolean = false) => {
+    if (!isConnected) {
+      setMessages([]);
+      return;
+    }
+
     if (!isSilent) setIsLoadingMessages(true);
     try {
-      let remoteJid = leadIdOrJid;
+      let targetJids: string[] = [];
       let leadId: string | undefined = undefined;
 
-      if (!isContactUnlinked) {
+      if (isContactUnlinked) {
+        const contact = unlinkedContacts.find(c => c.id === leadIdOrJid);
+        if (contact) {
+          targetJids = contact.allJids && contact.allJids.length > 0 ? contact.allJids : [contact.remoteJid];
+        } else {
+          targetJids = [leadIdOrJid];
+        }
+      } else {
         const lead = leads.find(l => l.id === leadIdOrJid);
         if (lead) {
           leadId = lead.id;
           const realChat = realChatMap.get(lead.id);
-          if (realChat?.remoteJid) {
-            remoteJid = realChat.remoteJid;
+          if (realChat?.allJids && realChat.allJids.length > 0) {
+            targetJids = realChat.allJids;
+          } else if (realChat?.remoteJid) {
+            targetJids = [realChat.remoteJid];
           } else {
             const clean = lead.telefone.replace(/\D/g, '');
             const ddi = clean.startsWith('55') ? clean : `55${clean}`;
-            remoteJid = `${ddi}@s.whatsapp.net`;
+            targetJids = [`${ddi}@s.whatsapp.net`];
           }
         }
       }
 
-      if (isConnected) {
-        const msgs = await whatsappService.getRealMessages(session, remoteJid, leadId);
+      if (targetJids.length > 0) {
+        const msgs = await whatsappService.getRealMessages(session, targetJids, leadId);
         setMessages(msgs);
       } else if (leadId) {
         const msgs = await whatsappService.getMessages(leadId);
@@ -243,16 +389,139 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   }, [isConnected, session, selectedLeadId, unlinkedContacts]);
 
   useEffect(() => {
-    if (selectedLeadId) {
+    if (selectedLeadId && isConnected) {
       const isCurUnlinked = unlinkedContacts.some(c => c.id === selectedLeadId);
       loadMessages(selectedLeadId, isCurUnlinked, false);
+    } else {
+      setMessages([]);
     }
-  }, [selectedLeadId]);
+  }, [selectedLeadId, isConnected]);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Audio Recording Handlers
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        mimeType = 'audio/ogg;codecs=opus';
+      }
+
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.start(100);
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.warn('Microphone access denied or error:', err);
+      alert('Permissão de microfone necessária para gravar mensagens de áudio.');
+    }
+  };
+
+  const cancelRecording = () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
+    }
+    audioChunksRef.current = [];
+    setIsRecording(false);
+    setRecordingSeconds(0);
+  };
+
+  const finishAndSendAudio = async () => {
+    if (!mediaRecorderRef.current || (!selectedLead && !unlinkedContact)) return;
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+
+    const duration = recordingSeconds;
+    const recorder = mediaRecorderRef.current;
+
+    recorder.onstop = async () => {
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      const mime = recorder.mimeType || 'audio/webm';
+      const audioBlob = new Blob(audioChunksRef.current, { type: mime });
+      audioChunksRef.current = [];
+      setIsRecording(false);
+      setRecordingSeconds(0);
+
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Audio = reader.result as string;
+        if (!base64Audio) return;
+
+        const targetPhone = isUnlinked && unlinkedContact 
+          ? (unlinkedContact.rawPhone || unlinkedContact.telefone)
+          : selectedLead?.telefone;
+
+        if (!targetPhone) return;
+
+        const optimisticMsg: WhatsAppMessage = {
+          id: `optimistic-audio-${Date.now()}`,
+          leadId: selectedLead?.id || unlinkedContact?.id || '',
+          fromMe: true,
+          text: '🎤 Mensagem de áudio',
+          mediaType: 'audio',
+          audioUrl: base64Audio,
+          audioDuration: duration,
+          timestamp: new Date().toISOString(),
+          status: 'delivered',
+        };
+        setMessages((prev) => [...prev, optimisticMsg]);
+
+        try {
+          await whatsappService.sendAudioMessage(
+            session,
+            targetPhone,
+            base64Audio,
+            selectedLead?.corretorId,
+            selectedLead?.id,
+            duration
+          );
+        } catch (err) {
+          console.error('Falha ao enviar áudio:', err);
+          alert('Erro ao enviar áudio.');
+        }
+      };
+      reader.readAsDataURL(audioBlob);
+    };
+
+    recorder.stop();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
+
+  const formatSec = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  };
 
   // Send message
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -276,12 +545,12 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
       try {
         await whatsappService.sendMessage(
-          unlinkedContact.remoteJid,
+          unlinkedContact.rawPhone || unlinkedContact.remoteJid,
           textToSend,
           session,
           undefined,
           undefined,
-          unlinkedContact.telefone
+          unlinkedContact.rawPhone || unlinkedContact.telefone
         );
       } catch (err) {
         console.error('Falha ao enviar mensagem para contato não vinculado:', err);
@@ -349,16 +618,18 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   };
 
   // Filter conversations
-  const filteredLeads = leads.filter(lead => {
-    const matchesSearch = 
-      lead.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      lead.telefone.includes(searchTerm) ||
-      (lead.empreendimentoInteresse && lead.empreendimentoInteresse.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredLeads = isConnected 
+    ? leads.filter(lead => {
+        const matchesSearch = 
+          lead.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          lead.telefone.includes(searchTerm) ||
+          (lead.empreendimentoInteresse && lead.empreendimentoInteresse.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    const matchesStage = stageFilter === 'all' || lead.statusFunil === stageFilter;
+        const matchesStage = stageFilter === 'all' || lead.statusFunil === stageFilter;
 
-    return matchesSearch && matchesStage;
-  });
+        return matchesSearch && matchesStage;
+      })
+    : [];
 
   const quickTemplates = whatsappService.getQuickTemplates(selectedLead);
 
@@ -433,192 +704,224 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Buscar cliente, telefone ou projeto..."
-                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-800 shadow-2xs"
+                disabled={!isConnected}
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-800 shadow-2xs disabled:bg-slate-100 disabled:cursor-not-allowed"
               />
             </div>
 
             {/* Stage Filter Chips */}
-            <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
-              <button
-                onClick={() => setStageFilter('all')}
-                className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
-                  stageFilter === 'all'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Todos ({leads.length + unlinkedContacts.length})
-              </button>
-              <button
-                onClick={() => setStageFilter('sem_lead')}
-                className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
-                  stageFilter === 'sem_lead'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Sem Lead ({unlinkedContacts.length})
-              </button>
-              <button
-                onClick={() => setStageFilter('novo_lead')}
-                className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
-                  stageFilter === 'novo_lead'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Novos
-              </button>
-              <button
-                onClick={() => setStageFilter('visita_agendada')}
-                className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
-                  stageFilter === 'visita_agendada'
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Visitas
-              </button>
-              <button
-                onClick={() => setStageFilter('aguardando_docs')}
-                className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
-                  stageFilter === 'aguardando_docs'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                Docs
-              </button>
-            </div>
+            {isConnected && (
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5 text-[11px] scrollbar-none">
+                <button
+                  onClick={() => setStageFilter('all')}
+                  className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
+                    stageFilter === 'all'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Todos ({leads.length + unlinkedContacts.length})
+                </button>
+                <button
+                  onClick={() => setStageFilter('sem_lead')}
+                  className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
+                    stageFilter === 'sem_lead'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Sem Lead ({unlinkedContacts.length})
+                </button>
+                <button
+                  onClick={() => setStageFilter('novo_lead')}
+                  className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
+                    stageFilter === 'novo_lead'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Novos
+                </button>
+                <button
+                  onClick={() => setStageFilter('visita_agendada')}
+                  className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
+                    stageFilter === 'visita_agendada'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Visitas
+                </button>
+                <button
+                  onClick={() => setStageFilter('aguardando_docs')}
+                  className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
+                    stageFilter === 'aguardando_docs'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  Docs
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Conversations List Scroll */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-            {/* Unlinked contacts without a lead in the sales funnel */}
-            {(stageFilter === 'all' || stageFilter === 'sem_lead') && unlinkedContacts.map(contact => {
-              const isSelected = contact.id === selectedLeadId;
-              return (
-                <div
-                  key={contact.id}
-                  onClick={() => setSelectedLeadId(contact.id)}
-                  className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors relative ${
-                    isSelected 
-                      ? 'bg-amber-50/80 border-l-4 border-l-amber-500' 
-                      : 'hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="relative">
-                    {contact.profilePicUrl ? (
-                      <img 
-                        src={contact.profilePicUrl} 
-                        alt={contact.nome} 
-                        className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
-                        {contact.nome.slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
-                  </div>
-
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-900 truncate">
-                        {contact.nome}
-                      </h4>
-                      <span className="text-[10px] text-amber-600 font-semibold">
-                        {contact.enviadaAt ? new Date(contact.enviadaAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Hoje'}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-slate-500 truncate">
-                      {contact.mensagem}
-                    </p>
-
-                    <div className="flex items-center justify-between pt-0.5">
-                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                        ● Sem Lead no Funil
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {contact.telefone}
-                      </span>
-                    </div>
-                  </div>
+            {!isConnected ? (
+              /* Disconnected Empty State */
+              <div className="p-8 text-center flex flex-col items-center justify-center h-full text-slate-400">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3 shadow-2xs">
+                  <WifiOff className="w-6 h-6 text-slate-400" />
                 </div>
-              );
-            })}
-
-            {stageFilter !== 'sem_lead' && filteredLeads.map(lead => {
-              const isSelected = lead.id === selectedLeadId;
-              const stageConf = STAGE_CONFIG[lead.statusFunil] || STAGE_CONFIG.novo_lead;
-              const realChat = realChatMap.get(lead.id);
-
-              return (
-                <div
-                  key={lead.id}
-                  onClick={() => setSelectedLeadId(lead.id)}
-                  className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors relative ${
-                    isSelected 
-                      ? 'bg-emerald-50/70 border-l-4 border-l-emerald-600' 
-                      : 'hover:bg-slate-50'
-                  }`}
+                <h4 className="text-sm font-bold text-slate-700">WhatsApp Desconectado</h4>
+                <p className="text-xs text-slate-400 mt-1.5 max-w-[220px] leading-relaxed">
+                  Conecte seu WhatsApp via QR Code para visualizar suas conversas e contatos nesta tela.
+                </p>
+                <button
+                  onClick={onOpenConnectModal}
+                  className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
                 >
-                  {/* Lead Avatar */}
-                  <div className="relative">
-                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
-                      {lead.nome.slice(0, 2).toUpperCase()}
-                    </div>
-                    {realChat ? (
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" title="WhatsApp Ativo" />
-                    ) : (
-                      <span className="w-2.5 h-2.5 rounded-full bg-slate-300 border-2 border-white absolute -bottom-0.5 -right-0.5" />
-                    )}
-                  </div>
-
-                  {/* Info Column */}
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-900 truncate">
-                        {lead.nome}
-                      </h4>
-                      <span className="text-[10px] text-slate-400">
-                        {realChat?.lastMessageTimestamp 
-                          ? new Date(realChat.lastMessageTimestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                          : new Date(lead.ultimaInteracaoAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                      </span>
-                    </div>
-
-                    {/* Empreendimento or Last WhatsApp Message */}
-                    {realChat?.lastMessage ? (
-                      <p className="text-[11px] text-slate-500 truncate">
-                        {realChat.lastMessage}
-                      </p>
-                    ) : (
-                      <div className="flex items-center gap-1 text-[11px] text-brand-600 font-medium">
-                        <Building2 className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{lead.empreendimentoInteresse}</span>
-                      </div>
-                    )}
-
-                    {/* Stage Badge & Phone */}
-                    <div className="flex items-center justify-between pt-0.5">
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${stageConf.badge}`}>
-                        {stageConf.label}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {lead.telefone}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {filteredLeads.length === 0 && stageFilter !== 'sem_lead' && (
-              <div className="p-8 text-center text-xs text-slate-400">
-                Nenhuma conversa encontrada
+                  Conectar Agora
+                </button>
               </div>
+            ) : (
+              <>
+                {/* Unlinked contacts without a lead in the sales funnel */}
+                {(stageFilter === 'all' || stageFilter === 'sem_lead') && unlinkedContacts.map(contact => {
+                  const isSelected = contact.id === selectedLeadId;
+                  return (
+                    <div
+                      key={contact.id}
+                      onClick={() => setSelectedLeadId(contact.id)}
+                      className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors relative ${
+                        isSelected 
+                          ? 'bg-amber-50/80 border-l-4 border-l-amber-500' 
+                          : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="relative">
+                        {contact.profilePicUrl ? (
+                          <img 
+                            src={contact.profilePicUrl} 
+                            alt={contact.nome} 
+                            className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
+                            {contact.nome.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
+                      </div>
+
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">
+                            {contact.nome}
+                          </h4>
+                          <span className="text-[10px] text-amber-600 font-semibold">
+                            {contact.enviadaAt ? new Date(contact.enviadaAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Hoje'}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-500 truncate">
+                          {contact.mensagem}
+                        </p>
+
+                        <div className="flex items-center justify-between pt-0.5">
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                            ● Sem Lead no Funil
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {contact.telefone}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {stageFilter !== 'sem_lead' && filteredLeads.map(lead => {
+                  const isSelected = lead.id === selectedLeadId;
+                  const stageConf = STAGE_CONFIG[lead.statusFunil] || STAGE_CONFIG.novo_lead;
+                  const realChat = realChatMap.get(lead.id);
+
+                  return (
+                    <div
+                      key={lead.id}
+                      onClick={() => setSelectedLeadId(lead.id)}
+                      className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors relative ${
+                        isSelected 
+                          ? 'bg-emerald-50/70 border-l-4 border-l-emerald-600' 
+                          : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      {/* Lead Avatar */}
+                      <div className="relative">
+                        {realChat?.profilePicUrl ? (
+                          <img 
+                            src={realChat.profilePicUrl}
+                            alt={lead.nome}
+                            className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
+                            {lead.nome.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        {realChat ? (
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" title="WhatsApp Ativo" />
+                        ) : (
+                          <span className="w-2.5 h-2.5 rounded-full bg-slate-300 border-2 border-white absolute -bottom-0.5 -right-0.5" />
+                        )}
+                      </div>
+
+                      {/* Info Column */}
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-bold text-slate-900 truncate">
+                            {lead.nome}
+                          </h4>
+                          <span className="text-[10px] text-slate-400">
+                            {realChat?.lastMessageTimestamp 
+                              ? new Date(realChat.lastMessageTimestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                              : new Date(lead.ultimaInteracaoAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Empreendimento or Last WhatsApp Message */}
+                        {realChat?.lastMessage ? (
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {realChat.lastMessage}
+                          </p>
+                        ) : (
+                          <div className="flex items-center gap-1 text-[11px] text-brand-600 font-medium">
+                            <Building2 className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{lead.empreendimentoInteresse}</span>
+                          </div>
+                        )}
+
+                        {/* Stage Badge & Phone */}
+                        <div className="flex items-center justify-between pt-0.5">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${stageConf.badge}`}>
+                            {stageConf.label}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {lead.telefone}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {filteredLeads.length === 0 && unlinkedContacts.length === 0 && (
+                  <div className="p-8 text-center text-xs text-slate-400">
+                    Nenhuma conversa encontrada
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -626,42 +929,55 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         {/* ========================================================= */}
         {/* COLUMN 2: ACTIVE CHAT WINDOW (CENTER PANE)               */}
         {/* ========================================================= */}
-        {(selectedLead || unlinkedContact) ? (
+        {isConnected && (selectedLead || unlinkedContact) ? (
           <div className="flex-1 flex flex-col bg-[#F0F2F5] relative overflow-hidden">
             
             {/* Chat Top Header */}
-            <div className="bg-white px-5 py-3 border-b border-slate-200 flex items-center justify-between shadow-2xs z-10">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-2xl text-white flex items-center justify-center font-bold text-sm shadow-xs ${
-                  isUnlinked 
-                    ? 'bg-gradient-to-tr from-amber-600 to-orange-500' 
-                    : 'bg-gradient-to-tr from-brand-600 to-amber-500'
-                }`}>
-                  {isUnlinked ? unlinkedContact!.nome.slice(0, 2).toUpperCase() : selectedLead!.nome.slice(0, 2).toUpperCase()}
+            <div className="bg-white px-4 py-2.5 border-b border-slate-200 flex items-center justify-between shadow-2xs z-10 gap-3">
+              {/* Left: Avatar & Contact Info */}
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="relative flex-shrink-0">
+                  {(isUnlinked ? unlinkedContact?.profilePicUrl : (realChatMap.get(selectedLead?.id || '')?.profilePicUrl)) ? (
+                    <img 
+                      src={isUnlinked ? unlinkedContact!.profilePicUrl : realChatMap.get(selectedLead!.id)!.profilePicUrl}
+                      alt={isUnlinked ? unlinkedContact!.nome : selectedLead!.nome}
+                      className="w-9 h-9 rounded-2xl object-cover shadow-xs"
+                    />
+                  ) : (
+                    <div className={`w-9 h-9 rounded-2xl text-white flex items-center justify-center font-bold text-xs shadow-xs ${
+                      isUnlinked 
+                        ? 'bg-gradient-to-tr from-amber-600 to-orange-500' 
+                        : 'bg-gradient-to-tr from-brand-600 to-amber-500'
+                    }`}>
+                      {isUnlinked ? unlinkedContact!.nome.slice(0, 2).toUpperCase() : selectedLead!.nome.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white absolute -bottom-0.5 -right-0.5" />
                 </div>
-                <div>
+
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-900">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                       {isUnlinked ? unlinkedContact!.nome : selectedLead!.nome}
                     </h3>
                     {isUnlinked ? (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200 flex-shrink-0">
                         ● Sem Card no Funil
                       </span>
                     ) : (
-                      <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold flex items-center gap-1">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold flex items-center gap-1 flex-shrink-0">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         online
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 flex items-center gap-2">
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1.5 truncate">
                     <span>{isUnlinked ? unlinkedContact!.telefone : selectedLead!.telefone}</span>
-                    {selectedLead && (
+                    {selectedLead?.empreendimentoInteresse && (
                       <>
                         <span>•</span>
-                        <span className="text-brand-600 font-medium flex items-center gap-0.5">
-                          <Building2 className="w-3 h-3" />
+                        <span className="text-brand-600 font-medium truncate flex items-center gap-0.5">
+                          <Building2 className="w-3 h-3 flex-shrink-0" />
                           {selectedLead.empreendimentoInteresse}
                         </span>
                       </>
@@ -670,9 +986,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                 </div>
               </div>
 
-              {/* Chat Actions */}
-              <div className="flex items-center gap-2">
-                
+              {/* Right: Chat Actions */}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 {isUnlinked ? (
                   /* Action to generate lead for unlinked contact */
                   <button
@@ -682,10 +997,10 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                       origemLead: 'whatsapp',
                       empreendimentoInteresse: empreendimentos[0]?.nome || 'Link Itaquera'
                     })}
-                    className="px-3.5 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                    className="px-3 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
                   >
-                    <UserPlus className="w-4 h-4" />
-                    <span>Gerar Lead no Funil</span>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>+ Gerar Lead</span>
                   </button>
                 ) : (
                   <>
@@ -699,9 +1014,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         <option value="novo_lead">Novo Lead</option>
                         <option value="em_atendimento">Em Atendimento</option>
                         <option value="visita_agendada">Visita Agendada</option>
-                        <option value="aguardando_docs">Aguardando Documentação</option>
-                        <option value="analise_credito">Análise de Crédito</option>
-                        <option value="proposta">Proposta & Negociação</option>
+                        <option value="aguardando_docs">Aguardando Docs</option>
+                        <option value="analise_credito">Análise Crédito</option>
+                        <option value="proposta">Proposta</option>
                         <option value="venda_fechada">Venda Fechada</option>
                         <option value="descartado">Descartado</option>
                       </select>
@@ -711,10 +1026,10 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     <button
                       onClick={() => setShowRightDrawer(true)}
                       title="Alimentar informações coletadas no perfil do lead"
-                      className="p-2 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                      className="p-1.5 sm:px-2.5 sm:py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <Edit3 className="w-3.5 h-3.5 text-brand-600" />
-                      <span className="hidden sm:inline">Alimentar Perfil</span>
+                      <span className="hidden md:inline">Perfil</span>
                     </button>
 
                     {/* Direct Schedule Visit */}
@@ -722,10 +1037,10 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                       <button
                         onClick={() => onScheduleVisit(selectedLead!)}
                         title="Agendar Visita ao Estande"
-                        className="p-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                        className="p-1.5 sm:px-2.5 sm:py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                       >
                         <Calendar className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Visita</span>
+                        <span className="hidden md:inline">Visita</span>
                       </button>
                     )}
 
@@ -734,10 +1049,10 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                       <button
                         onClick={() => onSelectLeadForCRM(selectedLead!)}
                         title="Ver Ficha Completa e Documentos Caixa"
-                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                        className="p-1.5 sm:px-2.5 sm:py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
                       >
                         <FileCheck2 className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Ficha</span>
+                        <span className="hidden md:inline">Ficha</span>
                       </button>
                     )}
                   </>
@@ -749,9 +1064,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Abrir no WhatsApp Web externo"
-                  className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                  className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
                 >
-                  <WhatsAppIcon className="w-4 h-4 text-emerald-600" />
+                  <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600" />
                   <ExternalLink className="w-3 h-3 text-emerald-500" />
                 </a>
 
@@ -797,8 +1112,19 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                           : 'bg-white text-slate-900 border border-slate-200/80 rounded-tl-xs'
                       }`}
                     >
-                      {/* Message Content */}
-                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      {/* Sender Name if incoming */}
+                      {!msg.fromMe && (msg.senderName || (isUnlinked ? unlinkedContact?.nome : selectedLead?.nome)) && (
+                        <p className="text-[10px] font-bold text-emerald-700 mb-1">
+                          {msg.senderName || (isUnlinked ? unlinkedContact?.nome : selectedLead?.nome)}
+                        </p>
+                      )}
+
+                      {/* Message Content or Audio Message Player */}
+                      {msg.mediaType === 'audio' || msg.text?.includes('🎤') ? (
+                        <AudioMessagePlayer message={msg} sessionName={session} />
+                      ) : (
+                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                      )}
 
                       {/* Footer: Timestamp & Double Check */}
                       <div className={`flex items-center justify-end gap-1 mt-1 text-[10px] ${
@@ -820,7 +1146,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Quick Canned Responses Bar (Respostas Rápidas do Corretor) */}
+            {/* Quick Canned Responses Bar */}
             <div className="px-4 py-2 bg-white border-t border-slate-200 flex items-center gap-1.5 overflow-x-auto text-xs scrollbar-none">
               <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1 flex-shrink-0 mr-1">
                 <Sparkles className="w-3.5 h-3.5 text-brand-500" />
@@ -847,37 +1173,83 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               </button>
             </div>
 
-            {/* Input Bar */}
+            {/* Input Bar with Voice Recording & Quick Typing */}
             <form onSubmit={handleSendMessage} className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
-              <button
-                type="button"
-                title="Anexar arquivo ou simulação"
-                className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <Paperclip className="w-4 h-4" />
-              </button>
+              {isRecording ? (
+                /* Active Audio Recording Bar */
+                <div className="flex-1 flex items-center justify-between bg-rose-50 border border-rose-200 rounded-2xl px-4 py-2">
+                  <div className="flex items-center gap-2 text-rose-700 font-medium text-xs">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
+                    <span>Gravando áudio:</span>
+                    <strong className="font-mono text-xs">{formatSec(recordingSeconds)}</strong>
+                  </div>
 
-              <textarea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                rows={1}
-                placeholder="Digite uma mensagem para o lead (pressione Enter para enviar)..."
-                className="flex-1 px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-800 resize-none max-h-24 shadow-inner"
-              />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelRecording}
+                      title="Cancelar gravação"
+                      className="p-1.5 text-slate-500 hover:text-rose-600 rounded-xl hover:bg-rose-100 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
 
-              <button
-                type="submit"
-                disabled={!inputText.trim() || isSending}
-                className="p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-xs transition-colors cursor-pointer disabled:opacity-40"
-              >
-                <Send className="w-4 h-4" />
-              </button>
+                    <button
+                      type="button"
+                      onClick={finishAndSendAudio}
+                      title="Enviar áudio gravado"
+                      className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Enviar</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Standard Text & Mic Bar */
+                <>
+                  <button
+                    type="button"
+                    title="Anexar arquivo ou simulação"
+                    className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer flex-shrink-0"
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+
+                  <textarea
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    rows={1}
+                    placeholder="Digite uma mensagem (Enter para enviar)..."
+                    className="flex-1 px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 text-slate-800 resize-none max-h-24 shadow-inner"
+                  />
+
+                  {inputText.trim() ? (
+                    <button
+                      type="submit"
+                      disabled={isSending}
+                      className="p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl shadow-xs transition-colors cursor-pointer disabled:opacity-40 flex-shrink-0"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startRecording}
+                      title="Gravar mensagem de áudio"
+                      className="p-2.5 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-2xl border border-slate-200 transition-colors cursor-pointer flex-shrink-0"
+                    >
+                      <Mic className="w-4 h-4" />
+                    </button>
+                  )}
+                </>
+              )}
             </form>
 
           </div>
@@ -886,18 +1258,30 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             <div className="w-16 h-16 rounded-3xl bg-slate-100 flex items-center justify-center mb-3">
               <WhatsAppIcon className="w-8 h-8 text-slate-400" />
             </div>
-            <h4 className="text-base font-bold text-slate-700">Selecione uma conversa</h4>
+            <h4 className="text-base font-bold text-slate-700">
+              {!isConnected ? 'WhatsApp Desconectado' : 'Selecione uma conversa'}
+            </h4>
             <p className="text-xs max-w-sm mt-1">
-              Escolha um lead na lista ao lado para ver o histórico espelhado de mensagens do WhatsApp.
+              {!isConnected 
+                ? 'Conecte sua conta do WhatsApp via QR Code para visualizar as mensagens e atender seus clientes em tempo real.'
+                : 'Escolha um lead na lista ao lado para ver o histórico espelhado de mensagens do WhatsApp.'}
             </p>
+            {!isConnected && (
+              <button
+                onClick={onOpenConnectModal}
+                className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
+              >
+                Conectar Agora
+              </button>
+            )}
           </div>
         )}
 
         {/* ========================================================= */}
         {/* COLUMN 3: QUICK CRM LEAD DRAWER (RIGHT PANE)             */}
         {/* ========================================================= */}
-        {(selectedLead || unlinkedContact) && showRightDrawer && (
-          <div className="w-84 bg-white border-l border-slate-200 p-5 overflow-y-auto space-y-5 flex-shrink-0 animate-in slide-in-from-right-10 duration-150">
+        {isConnected && (selectedLead || unlinkedContact) && showRightDrawer && (
+          <div className="w-80 bg-white border-l border-slate-200 p-5 overflow-y-auto space-y-5 flex-shrink-0 animate-in slide-in-from-right-10 duration-150">
             
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">

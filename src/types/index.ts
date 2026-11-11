@@ -103,7 +103,10 @@ export interface WhatsAppMessage {
   corretorId?: string;
   fromMe: boolean;
   text: string;
+  senderName?: string;
   mediaUrl?: string;
+  audioUrl?: string;
+  audioDuration?: number;
   mediaType?: 'image' | 'pdf' | 'audio' | 'document';
   mediaName?: string;
   timestamp: string;
