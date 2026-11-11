@@ -6,27 +6,31 @@ import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
 
 interface NewLeadModalProps {
   empreendimentos: Empreendimento[];
+  initialValues?: Partial<Lead>;
   onClose: () => void;
   onCreate: (newLead: Partial<Lead>) => Promise<void>;
 }
 
 export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   empreendimentos,
+  initialValues,
   onClose,
   onCreate
 }) => {
-  const [nome, setNome] = useState('');
-  const [telefone, setTelefone] = useState('');
-  const [email, setEmail] = useState('');
-  const [cpf, setCpf] = useState('');
-  const [rendaMensal, setRendaMensal] = useState<number | ''>('');
-  const [fgtsValor, setFgtsValor] = useState<number | ''>('');
+  const [nome, setNome] = useState(initialValues?.nome || '');
+  const [telefone, setTelefone] = useState(initialValues?.telefone || '');
+  const [email, setEmail] = useState(initialValues?.email || '');
+  const [cpf, setCpf] = useState(initialValues?.cpf || '');
+  const [rendaMensal, setRendaMensal] = useState<number | ''>(initialValues?.rendaMensal || '');
+  const [fgtsValor, setFgtsValor] = useState<number | ''>(initialValues?.fgtsValor || '');
   const [empreendimentoInteresse, setEmpreendimentoInteresse] = useState(
-    empreendimentos.length > 0 ? empreendimentos[0].nome : 'Link Itaquera'
+    initialValues?.empreendimentoInteresse || (empreendimentos.length > 0 ? empreendimentos[0].nome : 'Link Itaquera')
   );
-  const [statusFunil, setStatusFunil] = useState<FunnelStage>('novo_lead');
-  const [origemLead, setOrigemLead] = useState<'whatsapp' | 'zap' | 'meta' | 'google' | 'indicacao'>('whatsapp');
-  const [observacoes, setObservacoes] = useState('');
+  const [statusFunil, setStatusFunil] = useState<FunnelStage>(initialValues?.statusFunil || 'novo_lead');
+  const [origemLead, setOrigemLead] = useState<'whatsapp' | 'zap' | 'meta' | 'google' | 'indicacao'>(
+    (initialValues?.origemLead as any) || 'whatsapp'
+  );
+  const [observacoes, setObservacoes] = useState(initialValues?.observacoes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cpfError, setCpfError] = useState<string | null>(null);
 

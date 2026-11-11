@@ -36,6 +36,7 @@ const AppContent: React.FC = () => {
   const [whatsappInstance, setWhatsappInstance] = useState<WhatsAppInstance | null>(null);
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [chatTargetLeadId, setChatTargetLeadId] = useState<string | null>(null);
+  const [newLeadInitialValues, setNewLeadInitialValues] = useState<Partial<Lead> | undefined>(undefined);
 
   const handleOpenScheduleVisit = (lead?: Lead) => {
     setLeadForVisit(lead || null);
@@ -45,6 +46,16 @@ const AppContent: React.FC = () => {
   const handleOpenChatForLead = (leadId: string) => {
     setChatTargetLeadId(leadId);
     setActiveTab('whatsapp');
+  };
+
+  const handleOpenCreateLead = (initial?: Partial<Lead>) => {
+    setNewLeadInitialValues(initial);
+    setIsNewLeadModalOpen(true);
+  };
+
+  const handleQuickUpdateLead = async (leadId: string, updates: Partial<Lead>) => {
+    await leadsService.updateLead(leadId, updates);
+    await loadData();
   };
 
   const loadWhatsAppInstance = async () => {
@@ -207,10 +218,13 @@ const AppContent: React.FC = () => {
           leads={leads}
           initialSelectedLeadId={chatTargetLeadId}
           instance={whatsappInstance}
+          empreendimentos={empreendimentos}
           onSelectLeadForCRM={(lead) => setSelectedLead(lead)}
           onScheduleVisit={handleOpenScheduleVisit}
           onLeadStageChange={handleMoveLead}
           onOpenConnectModal={() => setIsWhatsAppModalOpen(true)}
+          onOpenCreateLead={handleOpenCreateLead}
+          onUpdateLead={handleQuickUpdateLead}
         />
       )}
 
@@ -241,7 +255,11 @@ const AppContent: React.FC = () => {
       {isNewLeadModalOpen && (
         <NewLeadModal
           empreendimentos={empreendimentos}
-          onClose={() => setIsNewLeadModalOpen(false)}
+          initialValues={newLeadInitialValues}
+          onClose={() => {
+            setIsNewLeadModalOpen(false);
+            setNewLeadInitialValues(undefined);
+          }}
           onCreate={handleCreateLead}
         />
       )}

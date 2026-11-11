@@ -16,7 +16,12 @@ import {
   Info, 
   ChevronRight,
   Wifi,
-  WifiOff
+  WifiOff,
+  UserPlus,
+  Save,
+  Edit3,
+  AlertCircle,
+  Check
 } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 
@@ -24,10 +29,13 @@ interface WhatsAppInboxViewProps {
   leads: Lead[];
   initialSelectedLeadId?: string | null;
   instance: WhatsAppInstance | null;
+  empreendimentos?: { id: string; nome: string }[];
   onSelectLeadForCRM?: (lead: Lead) => void;
   onScheduleVisit?: (lead: Lead) => void;
   onLeadStageChange?: (leadId: string, newStage: FunnelStage) => void;
   onOpenConnectModal: () => void;
+  onOpenCreateLead?: (initial?: Partial<Lead>) => void;
+  onUpdateLead?: (leadId: string, updates: Partial<Lead>) => Promise<void>;
 }
 
 const STAGE_CONFIG: Record<FunnelStage, { label: string; color: string; badge: string }> = {
@@ -45,13 +53,27 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   leads,
   initialSelectedLeadId,
   instance,
+  empreendimentos = [],
   onSelectLeadForCRM,
   onScheduleVisit,
   onLeadStageChange,
-  onOpenConnectModal
+  onOpenConnectModal,
+  onOpenCreateLead,
+  onUpdateLead
 }) => {
+  // Sample unlinked incoming WhatsApp contacts without a lead in the pipeline
+  const [unlinkedContacts] = useState([
+    {
+      id: 'unlinked-marcos',
+      nome: 'Marcos Paulo Silva',
+      telefone: '(11) 98112-4433',
+      mensagem: 'Olá! Vi o anúncio no Instagram do empreendimento em Itaquera. Tem unidades com 2 dormitórios disponíveis?',
+      enviadaAt: new Date(Date.now() - 1000 * 60 * 35).toISOString(),
+    }
+  ]);
+
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(
-    initialSelectedLeadId || (leads[0]?.id || null)
+    initialSelectedLeadId || (leads[0]?.id || unlinkedContacts[0]?.id || null)
   );
   const [searchTerm, setSearchTerm] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
@@ -61,10 +83,53 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [isSending, setIsSending] = useState(false);
   const [showRightDrawer, setShowRightDrawer] = useState(true);
 
+  // States to feed the lead's profile from chat (Alimentar Perfil)
+  const [editRenda, setEditRenda] = useState<number | ''>('');
+  const [editFgts, setEditFgts] = useState<number | ''>('');
+  const [editEmpreendimento, setEditEmpreendimento] = useState('');
+  const [editStatusFunil, setEditStatusFunil] = useState<FunnelStage>('novo_lead');
+  const [editObservacoes, setEditObservacoes] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const selectedLead = leads.find(l => l.id === selectedLeadId) || null;
+  const unlinkedContact = unlinkedContacts.find(c => c.id === selectedLeadId) || null;
+  const isUnlinked = Boolean(unlinkedContact && !selectedLead);
   const isConnected = instance?.status === 'connected';
+
+  // Sync edit form state when selectedLead changes
+  useEffect(() => {
+    if (selectedLead) {
+      setEditRenda(selectedLead.rendaMensal || '');
+      setEditFgts(selectedLead.fgtsValor || '');
+      setEditEmpreendimento(selectedLead.empreendimentoInteresse || (empreendimentos[0]?.nome || 'Link Itaquera'));
+      setEditStatusFunil(selectedLead.statusFunil);
+      setEditObservacoes(selectedLead.observacoes || '');
+    }
+  }, [selectedLead?.id, selectedLead?.updatedAt]);
+
+  const handleSaveProfile = async () => {
+    if (!selectedLead || !onUpdateLead) return;
+    setIsSavingProfile(true);
+    try {
+      await onUpdateLead(selectedLead.id, {
+        rendaMensal: editRenda === '' ? 0 : Number(editRenda),
+        fgtsValor: editFgts === '' ? 0 : Number(editFgts),
+        empreendimentoInteresse: editEmpreendimento || selectedLead.empreendimentoInteresse,
+        statusFunil: editStatusFunil,
+        observacoes: editObservacoes,
+      });
+      setSaveSuccessMsg(true);
+      setTimeout(() => setSaveSuccessMsg(false), 3000);
+    } catch (err) {
+      console.error('Erro ao atualizar perfil do lead:', err);
+      alert('Erro ao salvar informações no perfil do lead.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   // Load messages whenever selected lead changes
   const loadMessages = async (leadId: string) => {
@@ -80,10 +145,21 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   };
 
   useEffect(() => {
-    if (selectedLeadId) {
+    if (unlinkedContact) {
+      setMessages([
+        {
+          id: 'unlinked-msg-1',
+          leadId: unlinkedContact.id,
+          fromMe: false,
+          text: unlinkedContact.mensagem,
+          timestamp: unlinkedContact.enviadaAt,
+          status: 'read'
+        }
+      ]);
+    } else if (selectedLeadId) {
       loadMessages(selectedLeadId);
     }
-  }, [selectedLeadId]);
+  }, [selectedLeadId, unlinkedContact]);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -98,6 +174,22 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     const textToSend = inputText.trim();
     setInputText('');
     setIsSending(true);
+
+    if (isUnlinked) {
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `unlinked-msg-${Date.now()}`,
+          leadId: selectedLeadId!,
+          fromMe: true,
+          text: textToSend,
+          timestamp: new Date().toISOString(),
+          status: 'delivered'
+        }
+      ]);
+      setIsSending(false);
+      return;
+    }
 
     try {
       const newMsg = await whatsappService.sendMessage(selectedLeadId, textToSend);
@@ -234,7 +326,17 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                Todos ({leads.length})
+                Todos ({leads.length + unlinkedContacts.length})
+              </button>
+              <button
+                onClick={() => setStageFilter('sem_lead')}
+                className={`px-2 py-0.5 rounded-lg whitespace-nowrap font-medium transition-colors cursor-pointer ${
+                  stageFilter === 'sem_lead'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Sem Lead ({unlinkedContacts.length})
               </button>
               <button
                 onClick={() => setStageFilter('novo_lead')}
@@ -271,7 +373,54 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
           {/* Conversations List Scroll */}
           <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
-            {filteredLeads.map(lead => {
+            {/* Unlinked contacts without a lead in the sales funnel */}
+            {(stageFilter === 'all' || stageFilter === 'sem_lead') && unlinkedContacts.map(contact => {
+              const isSelected = contact.id === selectedLeadId;
+              return (
+                <div
+                  key={contact.id}
+                  onClick={() => setSelectedLeadId(contact.id)}
+                  className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors relative ${
+                    isSelected 
+                      ? 'bg-amber-50/80 border-l-4 border-l-amber-500' 
+                      : 'hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
+                      {contact.nome.slice(0, 2).toUpperCase()}
+                    </div>
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white absolute -bottom-0.5 -right-0.5" />
+                  </div>
+
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-900 truncate">
+                        {contact.nome}
+                      </h4>
+                      <span className="text-[10px] text-amber-600 font-semibold">
+                        Hoje
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 truncate">
+                      {contact.mensagem}
+                    </p>
+
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                        ● Sem Lead no Funil
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {contact.telefone}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {stageFilter !== 'sem_lead' && filteredLeads.map(lead => {
               const isSelected = lead.id === selectedLeadId;
               const stageConf = STAGE_CONFIG[lead.statusFunil] || STAGE_CONFIG.novo_lead;
 
@@ -324,7 +473,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               );
             })}
 
-            {filteredLeads.length === 0 && (
+            {filteredLeads.length === 0 && stageFilter !== 'sem_lead' && (
               <div className="p-8 text-center text-xs text-slate-400">
                 Nenhuma conversa encontrada
               </div>
@@ -335,30 +484,46 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         {/* ========================================================= */}
         {/* COLUMN 2: ACTIVE CHAT WINDOW (CENTER PANE)               */}
         {/* ========================================================= */}
-        {selectedLead ? (
+        {(selectedLead || unlinkedContact) ? (
           <div className="flex-1 flex flex-col bg-[#F0F2F5] relative overflow-hidden">
             
             {/* Chat Top Header */}
             <div className="bg-white px-5 py-3 border-b border-slate-200 flex items-center justify-between shadow-2xs z-10">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-amber-500 text-white flex items-center justify-center font-bold text-sm shadow-xs">
-                  {selectedLead.nome.slice(0, 2).toUpperCase()}
+                <div className={`w-10 h-10 rounded-2xl text-white flex items-center justify-center font-bold text-sm shadow-xs ${
+                  isUnlinked 
+                    ? 'bg-gradient-to-tr from-amber-600 to-orange-500' 
+                    : 'bg-gradient-to-tr from-brand-600 to-amber-500'
+                }`}>
+                  {isUnlinked ? unlinkedContact!.nome.slice(0, 2).toUpperCase() : selectedLead!.nome.slice(0, 2).toUpperCase()}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-slate-900">{selectedLead.nome}</h3>
-                    <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      online
-                    </span>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      {isUnlinked ? unlinkedContact!.nome : selectedLead!.nome}
+                    </h3>
+                    {isUnlinked ? (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200">
+                        ● Sem Card no Funil
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 font-semibold flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        online
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 flex items-center gap-2">
-                    <span>{selectedLead.telefone}</span>
-                    <span>•</span>
-                    <span className="text-brand-600 font-medium flex items-center gap-0.5">
-                      <Building2 className="w-3 h-3" />
-                      {selectedLead.empreendimentoInteresse}
-                    </span>
+                    <span>{isUnlinked ? unlinkedContact!.telefone : selectedLead!.telefone}</span>
+                    {selectedLead && (
+                      <>
+                        <span>•</span>
+                        <span className="text-brand-600 font-medium flex items-center gap-0.5">
+                          <Building2 className="w-3 h-3" />
+                          {selectedLead.empreendimentoInteresse}
+                        </span>
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
@@ -366,51 +531,79 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               {/* Chat Actions */}
               <div className="flex items-center gap-2">
                 
-                {/* Live Funnel Stage Selector */}
-                <div className="relative">
-                  <select
-                    value={selectedLead.statusFunil}
-                    onChange={(e) => onLeadStageChange && onLeadStageChange(selectedLead.id, e.target.value as FunnelStage)}
-                    className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
-                  >
-                    <option value="novo_lead">Novo Lead</option>
-                    <option value="em_atendimento">Em Atendimento</option>
-                    <option value="visita_agendada">Visita Agendada</option>
-                    <option value="aguardando_docs">Aguardando Documentação</option>
-                    <option value="analise_credito">Análise de Crédito</option>
-                    <option value="proposta">Proposta & Negociação</option>
-                    <option value="venda_fechada">Venda Fechada</option>
-                    <option value="descartado">Descartado</option>
-                  </select>
-                </div>
-
-                {/* Direct Schedule Visit */}
-                {onScheduleVisit && (
+                {isUnlinked ? (
+                  /* Action to generate lead for unlinked contact */
                   <button
-                    onClick={() => onScheduleVisit(selectedLead)}
-                    title="Agendar Visita ao Estande"
-                    className="p-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    onClick={() => onOpenCreateLead?.({
+                      nome: unlinkedContact!.nome,
+                      telefone: unlinkedContact!.telefone,
+                      origemLead: 'whatsapp',
+                      empreendimentoInteresse: empreendimentos[0]?.nome || 'Link Itaquera'
+                    })}
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                   >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Visita</span>
+                    <UserPlus className="w-4 h-4" />
+                    <span>Gerar Lead no Funil</span>
                   </button>
-                )}
+                ) : (
+                  <>
+                    {/* Live Funnel Stage Selector */}
+                    <div className="relative">
+                      <select
+                        value={selectedLead!.statusFunil}
+                        onChange={(e) => onLeadStageChange && onLeadStageChange(selectedLead!.id, e.target.value as FunnelStage)}
+                        className="text-xs bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs"
+                      >
+                        <option value="novo_lead">Novo Lead</option>
+                        <option value="em_atendimento">Em Atendimento</option>
+                        <option value="visita_agendada">Visita Agendada</option>
+                        <option value="aguardando_docs">Aguardando Documentação</option>
+                        <option value="analise_credito">Análise de Crédito</option>
+                        <option value="proposta">Proposta & Negociação</option>
+                        <option value="venda_fechada">Venda Fechada</option>
+                        <option value="descartado">Descartado</option>
+                      </select>
+                    </div>
 
-                {/* Direct View Lead CRM / Docs */}
-                {onSelectLeadForCRM && (
-                  <button
-                    onClick={() => onSelectLeadForCRM(selectedLead)}
-                    title="Ver Ficha Completa e Documentos Caixa"
-                    className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                  >
-                    <FileCheck2 className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Ficha</span>
-                  </button>
+                    {/* Direct Button: Alimentar Perfil */}
+                    <button
+                      onClick={() => setShowRightDrawer(true)}
+                      title="Alimentar informações coletadas no perfil do lead"
+                      className="p-2 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-brand-600" />
+                      <span className="hidden sm:inline">Alimentar Perfil</span>
+                    </button>
+
+                    {/* Direct Schedule Visit */}
+                    {onScheduleVisit && (
+                      <button
+                        onClick={() => onScheduleVisit(selectedLead!)}
+                        title="Agendar Visita ao Estande"
+                        className="p-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Visita</span>
+                      </button>
+                    )}
+
+                    {/* Direct View Lead CRM / Docs */}
+                    {onSelectLeadForCRM && (
+                      <button
+                        onClick={() => onSelectLeadForCRM(selectedLead!)}
+                        title="Ver Ficha Completa e Documentos Caixa"
+                        className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <FileCheck2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Ficha</span>
+                      </button>
+                    )}
+                  </>
                 )}
 
                 {/* Open External WhatsApp */}
                 <a
-                  href={`https://wa.me/55${selectedLead.telefone.replace(/\D/g, '')}`}
+                  href={`https://wa.me/55${(isUnlinked ? unlinkedContact!.telefone : selectedLead!.telefone).replace(/\D/g, '')}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Abrir no WhatsApp Web externo"
@@ -561,115 +754,228 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         {/* ========================================================= */}
         {/* COLUMN 3: QUICK CRM LEAD DRAWER (RIGHT PANE)             */}
         {/* ========================================================= */}
-        {selectedLead && showRightDrawer && (
-          <div className="w-80 bg-white border-l border-slate-200 p-5 overflow-y-auto space-y-5 flex-shrink-0 animate-in slide-in-from-right-10 duration-150">
+        {(selectedLead || unlinkedContact) && showRightDrawer && (
+          <div className="w-84 bg-white border-l border-slate-200 p-5 overflow-y-auto space-y-5 flex-shrink-0 animate-in slide-in-from-right-10 duration-150">
             
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-brand-500" />
-                <span>Ficha Rápida do Lead</span>
+                <span>{isUnlinked ? 'Contato do WhatsApp' : 'Ficha & Alimentação do Lead'}</span>
               </h4>
               <button
                 onClick={() => setShowRightDrawer(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs p-1"
+                className="text-slate-400 hover:text-slate-600 text-xs p-1 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Financial Overview (Caixa / MCMV) */}
-            <div className="p-4 bg-orange-50/70 rounded-2xl border border-orange-200/80 space-y-2.5">
-              <span className="text-[10px] font-bold text-brand-800 uppercase tracking-wider block">
-                Simulação Caixa Econômica
-              </span>
-
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-500 block">Renda Bruta:</span>
-                  <strong className="text-slate-900">
-                    {selectedLead.rendaMensal > 0 ? `R$ ${selectedLead.rendaMensal.toLocaleString('pt-BR')}` : 'A definir'}
-                  </strong>
+            {isUnlinked ? (
+              /* UNLINKED CONTACT STATE */
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-800 font-bold text-xs">
+                    <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <span>Contato Sem Lead no Funil</span>
+                  </div>
+                  <p className="text-xs text-amber-900 leading-relaxed">
+                    Esta conversa foi iniciada pelo WhatsApp, mas o contato ainda não possui um card correspondente no Funil de Vendas do Grupo 3C.
+                  </p>
                 </div>
 
-                <div>
-                  <span className="text-[10px] text-slate-500 block">Saldo FGTS:</span>
-                  <strong className="text-emerald-700">
-                    {selectedLead.fgtsValor > 0 ? `R$ ${selectedLead.fgtsValor.toLocaleString('pt-BR')}` : 'R$ 0'}
-                  </strong>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Nome:</span>
+                    <strong className="text-slate-900 font-bold text-sm">{unlinkedContact!.nome}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Telefone:</span>
+                    <span className="text-slate-800 font-medium">{unlinkedContact!.telefone}</span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="pt-2 border-t border-orange-200/60 flex justify-between items-center text-xs">
-                <span className="text-slate-600 text-[11px]">Parcela Máx (30%):</span>
-                <strong className="text-brand-700">
-                  R$ {(selectedLead.rendaMensal * 0.3).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </strong>
+                <button
+                  type="button"
+                  onClick={() => onOpenCreateLead?.({
+                    nome: unlinkedContact!.nome,
+                    telefone: unlinkedContact!.telefone,
+                    origemLead: 'whatsapp',
+                    empreendimentoInteresse: empreendimentos[0]?.nome || 'Link Itaquera'
+                  })}
+                  className="w-full py-3 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Gerar Lead no Funil Agora</span>
+                </button>
               </div>
-            </div>
+            ) : selectedLead ? (
+              /* LINKED LEAD - ALIMENTAR PERFIL DO LEAD FORM */
+              <div className="space-y-4">
 
-            {/* Document Checklist Summary */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
-                  <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Documentos Caixa</span>
-                </span>
-                <span className="text-[10px] font-semibold text-slate-500">
-                  {selectedLead.checklistProgress ? `${selectedLead.checklistProgress.coletados}/${selectedLead.checklistProgress.total}` : '0/6'}
-                </span>
-              </div>
+                {/* Form: Alimentar Perfil com Dados da Conversa */}
+                <div className="p-4 bg-orange-50/60 rounded-2xl border border-orange-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-brand-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Edit3 className="w-3.5 h-3.5 text-brand-600" />
+                      Alimentar Perfil do Lead
+                    </span>
+                    <span className="text-[10px] text-brand-700 font-medium">
+                      Dados do Chat
+                    </span>
+                  </div>
 
-              {selectedLead.checklistProgress?.temRejeitado && (
-                <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-[10px] text-rose-800 font-semibold">
-                  ⚠️ Documento recusado pela assessoria
+                  <p className="text-[11px] text-slate-600 leading-tight">
+                    Atualize os dados e anotações obtidas durante a conversa diretamente no CRM:
+                  </p>
+
+                  {/* Renda Mensal */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Renda Bruta Mensal (R$)
+                    </label>
+                    <input
+                      type="number"
+                      value={editRenda}
+                      onChange={(e) => setEditRenda(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Ex: 3500"
+                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-900 font-semibold"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      Parcela Máx (30%): <strong className="text-brand-700">R$ {((Number(editRenda) || 0) * 0.3).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                    </span>
+                  </div>
+
+                  {/* Saldo FGTS */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Saldo FGTS (R$)
+                    </label>
+                    <input
+                      type="number"
+                      value={editFgts}
+                      onChange={(e) => setEditFgts(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="Ex: 12000"
+                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-900 font-semibold"
+                    />
+                  </div>
+
+                  {/* Empreendimento */}
+                  {empreendimentos.length > 0 && (
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                        Empreendimento de Interesse
+                      </label>
+                      <select
+                        value={editEmpreendimento}
+                        onChange={(e) => setEditEmpreendimento(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800 font-medium"
+                      >
+                        {empreendimentos.map(emp => (
+                          <option key={emp.id} value={emp.nome}>{emp.nome}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Etapa no Funil */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Etapa no Funil de Vendas
+                    </label>
+                    <select
+                      value={editStatusFunil}
+                      onChange={(e) => setEditStatusFunil(e.target.value as FunnelStage)}
+                      className="w-full px-2.5 py-1.5 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800 font-semibold"
+                    >
+                      <option value="novo_lead">Novo Lead</option>
+                      <option value="em_atendimento">Em Atendimento</option>
+                      <option value="visita_agendada">Visita Agendada</option>
+                      <option value="aguardando_docs">Aguardando Documentação</option>
+                      <option value="analise_credito">Análise de Crédito</option>
+                      <option value="proposta">Proposta & Negociação</option>
+                      <option value="venda_fechada">Venda Fechada</option>
+                      <option value="descartado">Descartado</option>
+                    </select>
+                  </div>
+
+                  {/* Anotações da Conversa */}
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                      Anotações da Conversa / Observações
+                    </label>
+                    <textarea
+                      value={editObservacoes}
+                      onChange={(e) => setEditObservacoes(e.target.value)}
+                      rows={3}
+                      placeholder="Informações colhidas no chat (ex: casado, entrada facilitada em 36x, FGTS ativo)..."
+                      className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800 resize-none"
+                    />
+                  </div>
+
+                  {/* Botão Salvar Perfil */}
+                  <button
+                    type="button"
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile}
+                    className="w-full py-2.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSavingProfile ? 'Salvando...' : 'Salvar no Perfil do Lead'}</span>
+                  </button>
+
+                  {/* Feedback Mensagem de Sucesso */}
+                  {saveSuccessMsg && (
+                    <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-[11px] font-semibold flex items-center gap-1.5 animate-in fade-in">
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Perfil atualizado com sucesso no CRM!</span>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {selectedLead.motivoRejeicaoCredito && (
-                <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-[10px] text-rose-800">
-                  <strong>Recusa:</strong> {selectedLead.motivoRejeicaoCredito}
+                {/* Document Checklist Summary */}
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1">
+                      <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Documentos Caixa</span>
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500">
+                      {selectedLead.checklistProgress ? `${selectedLead.checklistProgress.coletados}/${selectedLead.checklistProgress.total}` : '0/6'}
+                    </span>
+                  </div>
+
+                  {selectedLead.checklistProgress?.temRejeitado && (
+                    <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-[10px] text-rose-800 font-semibold">
+                      ⚠️ Documento recusado pela assessoria
+                    </div>
+                  )}
+
+                  {selectedLead.motivoRejeicaoCredito && (
+                    <div className="p-2 bg-rose-50 border border-rose-200 rounded-xl text-[10px] text-rose-800">
+                      <strong>Recusa:</strong> {selectedLead.motivoRejeicaoCredito}
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-slate-500">
+                    Acompanhe o checklist documental completo ou envie a lista de pendências direto pelo chat.
+                  </p>
                 </div>
-              )}
 
-              <p className="text-[10px] text-slate-500">
-                Acompanhe o checklist documental completo ou envie a lista de pendências direto pelo chat.
-              </p>
-            </div>
+                {/* Button to open full modal */}
+                {onSelectLeadForCRM && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectLeadForCRM(selectedLead)}
+                    className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>Abrir Ficha Completa</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
 
-            {/* Empreendimento */}
-            <div className="space-y-1">
-              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                Empreendimento de Interesse
-              </span>
-              <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-brand-500" />
-                <span>{selectedLead.empreendimentoInteresse}</span>
-              </p>
-            </div>
-
-            {/* Observações */}
-            {selectedLead.observacoes && (
-              <div className="space-y-1">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">
-                  Observações
-                </span>
-                <p className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  {selectedLead.observacoes}
-                </p>
               </div>
-            )}
-
-            {/* Button to open full modal */}
-            {onSelectLeadForCRM && (
-              <button
-                onClick={() => onSelectLeadForCRM(selectedLead)}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <span>Abrir Ficha Completa</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            )}
+            ) : null}
 
           </div>
         )}
