@@ -336,7 +336,29 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
 
       {/* Visits List */}
       <div className="space-y-3.5">
-        {filteredVisits.map(visit => {
+        {isLoading ? (
+          /* Skeleton Screen for Visits List */
+          <div className="space-y-3.5">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-white rounded-3xl border border-slate-200/90 p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-pulse shadow-2xs">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-200 flex-shrink-0" />
+                  <div className="space-y-2">
+                    <div className="h-4 bg-slate-200 rounded w-44" />
+                    <div className="h-3 bg-slate-100 rounded w-64" />
+                    <div className="h-3 bg-slate-100 rounded w-36" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-9 w-24 bg-slate-200 rounded-xl" />
+                  <div className="h-9 w-24 bg-slate-100 rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            {filteredVisits.map(visit => {
           const visitDate = new Date(visit.dataHora);
           const isPast = visitDate < now;
           const isPendingOutcome = visit.realizada === null && isPast;
@@ -572,7 +594,9 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
             </button>
           </div>
         )}
-      </div>
+      </>
+    )}
+  </div>
 
       {/* Modal: Schedule New Visit */}
       {isScheduleModalOpen && (

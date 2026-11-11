@@ -278,7 +278,27 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
                 {/* Cards List (Vertical Scroll) */}
                 <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
-                  {columnLeads.map(lead => {
+                  {isLoading ? (
+                    /* Skeleton Screen for Kanban Column Cards */
+                    <div className="space-y-2.5">
+                      {[1, 2].map((k) => (
+                        <div key={k} className="p-3.5 rounded-xl border border-slate-200/90 bg-white shadow-2xs space-y-2.5 animate-pulse">
+                          <div className="flex items-center justify-between">
+                            <div className="h-3 bg-slate-200 rounded w-16" />
+                            <div className="h-2.5 bg-slate-200 rounded w-8" />
+                          </div>
+                          <div className="h-3.5 bg-slate-200 rounded w-28" />
+                          <div className="h-3 bg-slate-100 rounded w-24" />
+                          <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2">
+                            <div className="h-3 bg-slate-100 rounded" />
+                            <div className="h-3 bg-slate-100 rounded" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <>
+                      {columnLeads.map(lead => {
                     const next = getNextStage(lead.statusFunil);
                     const prev = getPrevStage(lead.statusFunil);
 
@@ -415,17 +435,18 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                             )}
                           </div>
                         </div>
-
                       </div>
                     );
                   })}
 
-                  {columnLeads.length === 0 && (
+                  {!isLoading && columnLeads.length === 0 && (
                     <div className="h-28 flex flex-col items-center justify-center border-2 border-dashed border-slate-200/80 rounded-xl text-center p-3">
                       <p className="text-[11px] text-slate-400 font-medium">Nenhum lead nesta etapa</p>
                     </div>
                   )}
-                </div>
+                </>
+              )}
+            </div>
 
               </div>
             );

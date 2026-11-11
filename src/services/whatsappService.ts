@@ -191,6 +191,49 @@ function extractNameFromMessageText(text?: string | null, fromMe?: boolean): str
   return null;
 }
 
+export function formatWhatsAppTimestamp(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  
+  // Calculate day difference relative to start of today in local timezone
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfMsgDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfToday - startOfMsgDay) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    // Hoje: Horário HH:mm
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  if (diffDays === 1) {
+    // Ontem
+    return 'Ontem';
+  }
+
+  if (diffDays > 1 && diffDays < 7) {
+    // Última semana: Dia da semana
+    const weekDays = [
+      'Domingo',
+      'Segunda-feira',
+      'Terça-feira',
+      'Quarta-feira',
+      'Quinta-feira',
+      'Sexta-feira',
+      'Sábado'
+    ];
+    return weekDays[date.getDay()];
+  }
+
+  // Anterior: DD/MM/AAAA
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 function loadLocalCache(key: string): Record<string, string> {
   try {
     const raw = localStorage.getItem(key);

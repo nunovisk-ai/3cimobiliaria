@@ -11,11 +11,13 @@ import {
 
 interface EmpreendimentosManagerProps {
   empreendimentos: Empreendimento[];
+  isLoading?: boolean;
   onRefresh: () => void;
 }
 
 export const EmpreendimentosManager: React.FC<EmpreendimentosManagerProps> = ({
   empreendimentos,
+  isLoading = false,
   onRefresh
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -119,7 +121,32 @@ export const EmpreendimentosManager: React.FC<EmpreendimentosManagerProps> = ({
 
       {/* Grid of Developments */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredEmps.map(emp => (
+        {isLoading ? (
+          [1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs p-5 flex flex-col justify-between animate-pulse h-52"
+            >
+              <div>
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="h-4 bg-slate-200 rounded w-20" />
+                  <div className="h-4 bg-emerald-100/70 rounded w-28" />
+                </div>
+                <div className="h-5 bg-slate-200 rounded w-44 mb-3" />
+                <div className="space-y-2 mt-4">
+                  <div className="h-3 bg-slate-100 rounded w-36" />
+                  <div className="h-3 bg-slate-100 rounded w-48" />
+                </div>
+              </div>
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="h-3 bg-slate-200 rounded w-24" />
+                <div className="h-3 bg-slate-100 rounded w-16" />
+              </div>
+            </div>
+          ))
+        ) : (
+          <>
+            {filteredEmps.map(emp => (
           <div 
             key={emp.id}
             className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-brand-300 transition-all p-5 flex flex-col justify-between"
@@ -174,6 +201,8 @@ export const EmpreendimentosManager: React.FC<EmpreendimentosManagerProps> = ({
             <Building2 className="w-8 h-8 text-slate-400 mx-auto mb-2" />
             <p className="text-xs font-semibold text-slate-600">Nenhum empreendimento encontrado.</p>
           </div>
+        )}
+          </>
         )}
       </div>
 

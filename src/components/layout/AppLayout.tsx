@@ -43,7 +43,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     kanban: { title: 'Funil de Vendas', subtitle: 'Gestão visual de negociações e leads' },
     empreendimentos: { title: 'Catálogo de Empreendimentos', subtitle: 'Lançamentos e unidades disponíveis' },
     agenda: { title: 'Agenda de Visitas', subtitle: 'Agendamentos e confirmações de plantão' },
-    whatsapp: { title: 'WhatsApp Inbox Espelhada', subtitle: 'Conversas e atendimento em tempo real' },
+    whatsapp: { title: 'WhatsApp Inbox', subtitle: '' },
     dashboard: { title: 'Visão Geral & Métricas', subtitle: 'Performance de vendas e conversões' },
     usuarios: { title: 'Gestão de Usuários & Equipe', subtitle: 'Permissões, acessos e auditoria' },
   };
@@ -322,9 +322,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <h1 className="font-heading font-extrabold text-base text-slate-900 tracking-tight leading-none">
                 {currentTabInfo.title}
               </h1>
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-none">
-                {currentTabInfo.subtitle}
-              </p>
+              {currentTabInfo.subtitle && (
+                <p className="text-[11px] text-slate-500 mt-1 leading-none">
+                  {currentTabInfo.subtitle}
+                </p>
+              )}
             </div>
           </div>
 

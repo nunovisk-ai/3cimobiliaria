@@ -282,6 +282,7 @@ const AppContent: React.FC = () => {
       {activeTab === 'empreendimentos' && (
         <EmpreendimentosManager
           empreendimentos={empreendimentos}
+          isLoading={isLeadsLoading}
           onRefresh={loadData}
         />
       )}

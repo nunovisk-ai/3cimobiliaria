@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lead, FunnelStage, WhatsAppMessage, WhatsAppInstance } from '../../types';
-import { whatsappService } from '../../services/whatsappService';
+import { whatsappService, formatWhatsAppTimestamp } from '../../services/whatsappService';
 import { 
   Search, 
   Send, 
@@ -201,6 +201,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   const [unlinkedContacts, setUnlinkedContacts] = useState<UnlinkedContact[]>([]);
   const [realChatMap, setRealChatMap] = useState<Map<string, any>>(new Map());
+  const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [brokenPics, setBrokenPics] = useState<Record<string, boolean>>({});
   const recentSentMessagesRef = useRef<Array<{ chatKey: string; msg: WhatsAppMessage; sentAt: number }>>([]);
   const readTimestampsRef = useRef<Record<string, number>>({});
@@ -304,12 +305,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   // Load real chats from Evolution API
   const loadChats = async () => {
-    if (!isConnected) {
-      setUnlinkedContacts([]);
-      setRealChatMap(new Map());
-      onUnreadCountChange?.(0);
-      return;
-    }
+      if (!isConnected) {
+        setUnlinkedContacts([]);
+        setRealChatMap(new Map());
+        onUnreadCountChange?.(0);
+        setIsLoadingChats(false);
+        return;
+      }
 
     try {
       const chats = await whatsappService.getRealChats(session);
@@ -433,6 +435,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
       }
     } catch (err) {
       console.warn('Erro ao carregar chats reais:', err);
+    } finally {
+      setIsLoadingChats(false);
     }
   };
 
@@ -1080,6 +1084,31 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   Conectar Agora
                 </button>
               </div>
+            ) : isLoadingChats ? (
+              /* Skeleton Screen for Conversations List */
+              <div className="p-3 space-y-2.5">
+                {[1, 2, 3, 4, 5, 6, 7].map(i => (
+                  <div key={i} className="p-3 rounded-2xl bg-white border border-slate-100 flex items-start gap-3 animate-pulse shadow-2xs">
+                    <div className="w-10 h-10 rounded-2xl bg-slate-200 flex-shrink-0" />
+                    <div className="flex-1 space-y-2 py-0.5 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <div className="h-3.5 bg-slate-200 rounded-md w-32" />
+                      </div>
+                      <div className="h-3 bg-slate-100 rounded-md w-44" />
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="h-2.5 bg-slate-100 rounded-md w-20" />
+                        <div className="h-2.5 bg-slate-200 rounded-md w-12" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredUnlinkedContacts.length === 0 && filteredLeads.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 flex flex-col items-center justify-center h-full">
+                <Search className="w-8 h-8 text-slate-300 mb-2" />
+                <p className="text-xs font-semibold text-slate-600">Nenhuma conversa encontrada</p>
+                <p className="text-[11px] text-slate-400 mt-1">Tente ajustar seus filtros de busca.</p>
+              </div>
             ) : (
               <>
                 {/* Unlinked contacts without a lead in the sales funnel */}
@@ -1123,9 +1152,6 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                           <h4 className={`text-xs truncate ${hasUnread ? 'font-extrabold text-slate-950' : 'font-bold text-slate-900'}`}>
                             {contact.nome}
                           </h4>
-                          <span className={`text-[10px] flex-shrink-0 ${hasUnread ? 'text-emerald-600 font-bold' : 'text-amber-600 font-semibold'}`}>
-                            {contact.enviadaAt ? new Date(contact.enviadaAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : 'Hoje'}
-                          </span>
                         </div>
 
                         <div className="flex items-center justify-between gap-2">
@@ -1152,8 +1178,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
                             ● Sem Lead no Funil
                           </span>
-                          <span className="text-[10px] text-slate-400">
-                            {contact.telefone}
+                          <span className={`text-[10px] flex-shrink-0 font-medium ${hasUnread ? 'text-emerald-600 font-bold' : 'text-slate-400'}`}>
+                            {formatWhatsAppTimestamp(contact.enviadaAt)}
                           </span>
                         </div>
                       </div>
@@ -1206,11 +1232,6 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                           <h4 className={`text-xs truncate ${hasUnread ? 'font-extrabold text-slate-950' : 'font-bold text-slate-900'}`}>
                             {lead.nome}
                           </h4>
-                          <span className={`text-[10px] flex-shrink-0 ${hasUnread ? 'text-emerald-600 font-bold' : 'text-slate-400'}`}>
-                            {realChat?.lastMessageTimestamp 
-                              ? new Date(realChat.lastMessageTimestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                              : new Date(lead.ultimaInteracaoAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                          </span>
                         </div>
 
                         {/* Empreendimento or Last WhatsApp Message */}
@@ -1241,13 +1262,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                           )}
                         </div>
 
-                        {/* Stage Badge & Phone */}
+                        {/* Stage Badge & Timestamp */}
                         <div className="flex items-center justify-between pt-0.5">
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${stageConf.badge}`}>
                             {stageConf.label}
                           </span>
-                          <span className="text-[10px] text-slate-400">
-                            {lead.telefone}
+                          <span className={`text-[10px] flex-shrink-0 font-medium ${hasUnread ? 'text-emerald-600 font-bold' : 'text-slate-400'}`}>
+                            {formatWhatsAppTimestamp(realChat?.lastMessageTimestamp || lead.ultimaInteracaoAt)}
                           </span>
                         </div>
                       </div>
@@ -1431,8 +1452,41 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               </div>
 
               {isLoadingMessages ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-emerald-500 border-t-transparent" />
+                /* Skeleton Screen for Chat Messages */
+                <div className="space-y-4 py-4 animate-pulse">
+                  {/* Incoming bubble skeleton */}
+                  <div className="flex justify-start">
+                    <div className="p-3.5 rounded-2xl rounded-tl-xs bg-white border border-slate-200/80 shadow-2xs space-y-2 w-64">
+                      <div className="h-3 bg-slate-200 rounded w-20" />
+                      <div className="h-3.5 bg-slate-100 rounded w-48" />
+                      <div className="h-3 bg-slate-100 rounded w-32" />
+                    </div>
+                  </div>
+                  {/* Outgoing bubble skeleton */}
+                  <div className="flex justify-end">
+                    <div className="p-3.5 rounded-2xl rounded-tr-xs bg-emerald-600/10 border border-emerald-200/60 shadow-2xs space-y-2 w-56">
+                      <div className="h-3.5 bg-emerald-200/70 rounded w-40" />
+                      <div className="h-3 bg-emerald-100/70 rounded w-28" />
+                    </div>
+                  </div>
+                  {/* Incoming bubble skeleton */}
+                  <div className="flex justify-start">
+                    <div className="p-3.5 rounded-2xl rounded-tl-xs bg-white border border-slate-200/80 shadow-2xs space-y-2 w-72">
+                      <div className="h-3 bg-slate-200 rounded w-24" />
+                      <div className="h-3.5 bg-slate-100 rounded w-60" />
+                      <div className="h-3 bg-slate-100 rounded w-40" />
+                    </div>
+                  </div>
+                  {/* Outgoing audio message bubble skeleton */}
+                  <div className="flex justify-end">
+                    <div className="p-3.5 rounded-2xl rounded-tr-xs bg-emerald-600/10 border border-emerald-200/60 shadow-2xs flex items-center gap-3 w-56">
+                      <div className="w-8 h-8 rounded-full bg-emerald-200/80 flex-shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-2 bg-emerald-200/70 rounded-full w-full" />
+                        <div className="h-2 bg-emerald-100/70 rounded w-14" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 messages.map(msg => {
