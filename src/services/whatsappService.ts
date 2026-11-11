@@ -1,7 +1,75 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { WhatsAppMessage, WhatsAppInstance, Lead } from '../types';
 
+export const EVOLUTION_API_URL = import.meta.env.VITE_EVOLUTION_API_URL || 'https://evolution.vitrai.com.br';
+export const EVOLUTION_API_KEY = import.meta.env.VITE_EVOLUTION_API_KEY || '3c_evolution_secret_994821';
+
 export const whatsappService = {
+  /**
+   * Fetches the live QR code from Evolution API
+   */
+  async fetchLiveQrCode(sessionName: string = '3c_vendedor'): Promise<string | null> {
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${sessionName}`, {
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+        },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.base64 || null;
+    } catch (err) {
+      console.warn('Could not fetch QR code from Evolution API:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Checks real connection state from Evolution API
+   */
+  async checkLiveConnectionState(sessionName: string = '3c_vendedor'): Promise<'open' | 'connecting' | 'close'> {
+    try {
+      const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${sessionName}`, {
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+        },
+      });
+      if (!res.ok) return 'close';
+      const data = await res.json();
+      return data?.instance?.state || 'close';
+    } catch (err) {
+      console.warn('Could not check connection state from Evolution API:', err);
+      return 'close';
+    }
+  },
+
+  /**
+   * Sends a real message via Evolution API with anti-ban delay & presence
+   */
+  async sendEvolutionMessage(sessionName: string, phoneNumber: string, text: string): Promise<boolean> {
+    try {
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
+      const ddiPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+
+      const res = await fetch(`${EVOLUTION_API_URL}/message/sendText/${sessionName}`, {
+        method: 'POST',
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          number: ddiPhone,
+          text: text,
+          delay: 1200, // Anti-ban emulation: mimics human typing
+          linkPreview: true,
+        }),
+      });
+      return res.ok;
+    } catch (err) {
+      console.warn('Error sending message via Evolution API:', err);
+      return false;
+    }
+  },
   /**
    * Fetches all messages for a specific lead, ordered chronologically
    */
@@ -56,6 +124,22 @@ export const whatsappService = {
     if (error) {
       console.error('Error sending message:', error);
       throw error;
+    }
+
+    // Try sending via Evolution API asynchronously if lead has phone
+    try {
+      const { data: lead } = await supabase
+        .from('leads')
+        .select('telefone')
+        .eq('id', leadId)
+        .maybeSingle();
+
+      if (lead?.telefone) {
+        // Dispatch to real WhatsApp in the background
+        this.sendEvolutionMessage('3c_vendedor', lead.telefone, text);
+      }
+    } catch (e) {
+      console.warn('Could not forward message to Evolution API:', e);
     }
 
     // Update lead's last interaction timestamp
@@ -138,13 +222,37 @@ export const whatsappService = {
     }
 
     if (data) {
+      let currentStatus = data.status;
+      let currentQr = data.qrcode_base64;
+
+      try {
+        const liveState = await this.checkLiveConnectionState(data.session_name);
+        if (liveState === 'open' && currentStatus !== 'connected') {
+          currentStatus = 'connected';
+          await supabase
+            .from('whatsapp_instances')
+            .update({ status: 'connected', updated_at: new Date().toISOString() })
+            .eq('id', data.id);
+        } else if (currentStatus !== 'connected' && !currentQr) {
+          currentQr = await this.fetchLiveQrCode(data.session_name);
+          if (currentQr) {
+            await supabase
+              .from('whatsapp_instances')
+              .update({ qrcode_base64: currentQr })
+              .eq('id', data.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Error checking live Evolution instance state:', err);
+      }
+
       return {
         id: data.id,
         corretorId: data.corretor_id,
         sessionName: data.session_name,
         phoneNumber: data.phone_number,
-        status: data.status,
-        qrcodeBase64: data.qrcode_base64,
+        status: currentStatus,
+        qrcodeBase64: currentQr,
         connectedAt: data.connected_at,
         lastSyncAt: data.last_sync_at,
       };

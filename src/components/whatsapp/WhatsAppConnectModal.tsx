@@ -30,20 +30,64 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
   const [timeLeft, setTimeLeft] = useState(60);
   const [isConnecting, setIsConnecting] = useState(false);
   const [customPhone, setCustomPhone] = useState('(11) 98765-4321');
+  const [liveQrCode, setLiveQrCode] = useState<string | null>(instance?.qrcodeBase64 || null);
+  const [isRefreshingQr, setIsRefreshingQr] = useState(false);
 
   const isConnected = instance?.status === 'connected';
 
-  // Timer countdown for QR code refresh
+  // Fetch live QR code from Evolution API
+  const fetchFreshQr = async () => {
+    setIsRefreshingQr(true);
+    const session = instance?.sessionName || '3c_vendedor';
+    try {
+      const qr = await whatsappService.fetchLiveQrCode(session);
+      if (qr) {
+        setLiveQrCode(qr);
+      }
+    } catch (err) {
+      console.warn('Erro ao atualizar QR Code:', err);
+    } finally {
+      setIsRefreshingQr(false);
+    }
+  };
+
+  // Timer countdown and live polling
   useEffect(() => {
     if (isConnected) return;
+
+    fetchFreshQr();
+
     const interval = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) return 60;
+        if (prev <= 1) {
+          fetchFreshQr();
+          return 60;
+        }
         return prev - 1;
       });
     }, 1000);
-    return () => clearInterval(interval);
-  }, [isConnected]);
+
+    // Periodically check if phone scanned the QR Code
+    const connectionPoll = setInterval(async () => {
+      const session = instance?.sessionName || '3c_vendedor';
+      try {
+        const state = await whatsappService.checkLiveConnectionState(session);
+        if (state === 'open') {
+          if (instance?.id) {
+            await whatsappService.setInstanceConnected(instance.id, instance.phoneNumber || '(11) 98765-4321');
+          }
+          onStatusChanged();
+        }
+      } catch (err) {
+        console.warn('Erro ao checar status de conexao:', err);
+      }
+    }, 3500);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(connectionPoll);
+    };
+  }, [isConnected, instance?.sessionName]);
 
   // Handle Demo Connect
   const handleDemoConnect = async () => {
@@ -220,86 +264,68 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
                 {/* Right QR Code Box */}
                 <div className="flex flex-col items-center justify-center p-4 bg-slate-50 border border-slate-200 rounded-2xl relative">
                   
-                  {/* Real QR Code SVG Graphic */}
-                  <div className="relative p-2 bg-white rounded-xl shadow-xs border border-slate-200">
-                    <svg className="w-48 h-48" viewBox="0 0 100 100" fill="none">
-                      {/* Outer Background */}
-                      <rect width="100" height="100" fill="white" rx="4" />
-                      
-                      {/* Top-Left Position Detection Pattern */}
-                      <rect x="6" y="6" width="28" height="28" fill="#1E293B" rx="2" />
-                      <rect x="10" y="10" width="20" height="20" fill="white" rx="1" />
-                      <rect x="14" y="14" width="12" height="12" fill="#F68633" rx="1" />
-
-                      {/* Top-Right Position Detection Pattern */}
-                      <rect x="66" y="6" width="28" height="28" fill="#1E293B" rx="2" />
-                      <rect x="70" y="10" width="20" height="20" fill="white" rx="1" />
-                      <rect x="74" y="14" width="12" height="12" fill="#F68633" rx="1" />
-
-                      {/* Bottom-Left Position Detection Pattern */}
-                      <rect x="6" y="66" width="28" height="28" fill="#1E293B" rx="2" />
-                      <rect x="10" y="70" width="20" height="20" fill="white" rx="1" />
-                      <rect x="14" y="74" width="12" height="12" fill="#F68633" rx="1" />
-
-                      {/* Timing & Data Matrix Patterns (Simulated dynamic QR) */}
-                      <rect x="38" y="10" width="4" height="4" fill="#1E293B" />
-                      <rect x="46" y="10" width="4" height="4" fill="#1E293B" />
-                      <rect x="54" y="10" width="4" height="4" fill="#1E293B" />
-                      
-                      <rect x="38" y="18" width="4" height="4" fill="#1E293B" />
-                      <rect x="50" y="18" width="4" height="4" fill="#1E293B" />
-
-                      <rect x="10" y="38" width="4" height="4" fill="#1E293B" />
-                      <rect x="10" y="46" width="4" height="4" fill="#1E293B" />
-                      <rect x="10" y="54" width="4" height="4" fill="#1E293B" />
-
-                      <rect x="18" y="38" width="4" height="4" fill="#1E293B" />
-                      <rect x="18" y="50" width="4" height="4" fill="#1E293B" />
-
-                      {/* Center Data Matrix */}
-                      <rect x="38" y="38" width="6" height="6" fill="#1E293B" />
-                      <rect x="48" y="36" width="4" height="4" fill="#1E293B" />
-                      <rect x="56" y="38" width="6" height="6" fill="#1E293B" />
-                      <rect x="66" y="36" width="6" height="6" fill="#1E293B" />
-                      <rect x="76" y="38" width="4" height="4" fill="#1E293B" />
-                      <rect x="84" y="36" width="4" height="4" fill="#1E293B" />
-
-                      <rect x="36" y="48" width="4" height="4" fill="#1E293B" />
-                      <rect x="62" y="48" width="4" height="4" fill="#1E293B" />
-                      <rect x="72" y="46" width="6" height="6" fill="#1E293B" />
-                      <rect x="82" y="48" width="4" height="4" fill="#1E293B" />
-
-                      <rect x="38" y="58" width="6" height="6" fill="#1E293B" />
-                      <rect x="48" y="56" width="4" height="4" fill="#1E293B" />
-                      <rect x="56" y="58" width="6" height="6" fill="#1E293B" />
-                      <rect x="66" y="56" width="4" height="4" fill="#1E293B" />
-                      <rect x="84" y="58" width="4" height="4" fill="#1E293B" />
-
-                      <rect x="38" y="68" width="4" height="4" fill="#1E293B" />
-                      <rect x="46" y="72" width="6" height="6" fill="#1E293B" />
-                      <rect x="56" y="68" width="4" height="4" fill="#1E293B" />
-                      <rect x="66" y="70" width="6" height="6" fill="#1E293B" />
-                      <rect x="76" y="68" width="4" height="4" fill="#1E293B" />
-                      <rect x="84" y="72" width="6" height="6" fill="#1E293B" />
-
-                      <rect x="38" y="80" width="6" height="6" fill="#1E293B" />
-                      <rect x="48" y="84" width="4" height="4" fill="#1E293B" />
-                      <rect x="56" y="80" width="6" height="6" fill="#1E293B" />
-                      <rect x="66" y="82" width="4" height="4" fill="#1E293B" />
-                      <rect x="74" y="84" width="6" height="6" fill="#1E293B" />
-                      <rect x="84" y="80" width="4" height="4" fill="#1E293B" />
-
-                      {/* Grupo 3C Center Badge */}
-                      <circle cx="50" cy="50" r="10" fill="white" stroke="#F68633" strokeWidth="2" />
-                      <text x="50" y="53" textAnchor="middle" fill="#F68633" fontSize="8" fontWeight="bold">3C</text>
-                    </svg>
+                  {/* Real QR Code or Fallback */}
+                  <div className="relative p-2 bg-white rounded-xl shadow-xs border border-slate-200 flex items-center justify-center min-h-[200px] min-w-[200px]">
+                    {liveQrCode ? (
+                      <img 
+                        src={liveQrCode} 
+                        alt="QR Code WhatsApp Oficial" 
+                        className="w-48 h-48 object-contain rounded-lg"
+                      />
+                    ) : (
+                      <svg className="w-48 h-48" viewBox="0 0 100 100" fill="none">
+                        <rect width="100" height="100" fill="white" rx="4" />
+                        <rect x="6" y="6" width="28" height="28" fill="#1E293B" rx="2" />
+                        <rect x="10" y="10" width="20" height="20" fill="white" rx="1" />
+                        <rect x="14" y="14" width="12" height="12" fill="#F68633" rx="1" />
+                        <rect x="66" y="6" width="28" height="28" fill="#1E293B" rx="2" />
+                        <rect x="70" y="10" width="20" height="20" fill="white" rx="1" />
+                        <rect x="74" y="14" width="12" height="12" fill="#F68633" rx="1" />
+                        <rect x="6" y="66" width="28" height="28" fill="#1E293B" rx="2" />
+                        <rect x="10" y="70" width="20" height="20" fill="white" rx="1" />
+                        <rect x="14" y="74" width="12" height="12" fill="#F68633" rx="1" />
+                        <rect x="38" y="10" width="4" height="4" fill="#1E293B" />
+                        <rect x="46" y="10" width="4" height="4" fill="#1E293B" />
+                        <rect x="54" y="10" width="4" height="4" fill="#1E293B" />
+                        <rect x="38" y="18" width="4" height="4" fill="#1E293B" />
+                        <rect x="50" y="18" width="4" height="4" fill="#1E293B" />
+                        <rect x="10" y="38" width="4" height="4" fill="#1E293B" />
+                        <rect x="10" y="46" width="4" height="4" fill="#1E293B" />
+                        <rect x="10" y="54" width="4" height="4" fill="#1E293B" />
+                        <rect x="18" y="38" width="4" height="4" fill="#1E293B" />
+                        <rect x="18" y="50" width="4" height="4" fill="#1E293B" />
+                        <rect x="38" y="38" width="6" height="6" fill="#1E293B" />
+                        <rect x="48" y="36" width="4" height="4" fill="#1E293B" />
+                        <rect x="56" y="38" width="6" height="6" fill="#1E293B" />
+                        <rect x="66" y="36" width="6" height="6" fill="#1E293B" />
+                        <rect x="76" y="38" width="4" height="4" fill="#1E293B" />
+                        <rect x="84" y="36" width="4" height="4" fill="#1E293B" />
+                        <rect x="36" y="48" width="4" height="4" fill="#1E293B" />
+                        <rect x="62" y="48" width="4" height="4" fill="#1E293B" />
+                        <rect x="72" y="46" width="6" height="6" fill="#1E293B" />
+                        <rect x="82" y="48" width="4" height="4" fill="#1E293B" />
+                        <rect x="38" y="58" width="6" height="6" fill="#1E293B" />
+                        <rect x="48" y="56" width="4" height="4" fill="#1E293B" />
+                        <rect x="56" y="58" width="6" height="6" fill="#1E293B" />
+                        <rect x="66" y="56" width="4" height="4" fill="#1E293B" />
+                        <rect x="84" y="58" width="4" height="4" fill="#1E293B" />
+                        <circle cx="50" cy="50" r="10" fill="white" stroke="#F68633" strokeWidth="2" />
+                        <text x="50" y="53" textAnchor="middle" fill="#F68633" fontSize="8" fontWeight="bold">3C</text>
+                      </svg>
+                    )}
                   </div>
 
                   {/* Refresh indicator */}
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-3">
-                    <RotateCw className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
-                    <span>Atualiza em <strong>{timeLeft}s</strong></span>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchFreshQr}
+                    disabled={isRefreshingQr}
+                    className="flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-emerald-700 mt-3 transition-colors cursor-pointer"
+                    title="Clique para forçar novo QR Code"
+                  >
+                    <RotateCw className={`w-3.5 h-3.5 text-emerald-600 ${isRefreshingQr ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshingQr ? 'Gerando novo QR Code...' : `Atualiza em ${timeLeft}s (clique p/ renovar)`}</span>
+                  </button>
                 </div>
 
               </div>
