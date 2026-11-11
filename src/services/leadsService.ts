@@ -137,6 +137,7 @@ export const leadsService = {
     if (updates.fgtsAprovado !== undefined) payload.fgts_aprovado = updates.fgtsAprovado;
     if (updates.empreendimentoInteresse !== undefined) payload.empreendimento_nome = updates.empreendimentoInteresse;
     if (updates.statusFunil !== undefined) payload.status_funil = updates.statusFunil;
+    if (updates.origemLead !== undefined) payload.origem = updates.origemLead;
     if (updates.observacoes !== undefined) payload.observacoes = updates.observacoes;
     if (updates.motivoDescarte !== undefined) payload.motivo_descarte = updates.motivoDescarte;
     if (updates.motivoRejeicaoCredito !== undefined) payload.motivo_rejeicao_credito = updates.motivoRejeicaoCredito;

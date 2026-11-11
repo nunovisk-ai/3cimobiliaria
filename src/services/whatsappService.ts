@@ -661,7 +661,11 @@ export const whatsappService = {
         }
       }
 
-      // Extract LID -> Phone mappings and contact names from recent incoming messages
+      // Extract LID -> Phone mappings, contact names, and read/unread statuses from recent messages
+      const unreadMessageKeysByJid = new Map<string, Array<{ id: string; fromMe: boolean; remoteJid: string }>>();
+      const latestIncomingReadByJid = new Map<string, { timestamp: number; isRead: boolean }>();
+      const latestOutgoingStatusByJid = new Map<string, { timestamp: number; status: 'sent' | 'delivered' | 'read' }>();
+
       if (incomingMsgsRes.status === 'fulfilled' && incomingMsgsRes.value.ok) {
         try {
           const msgData = await incomingMsgsRes.value.json();
@@ -688,6 +692,46 @@ export const whatsappService = {
                 nameMemoryCache.set(alt, validPush);
                 storedNames[alt] = validPush;
                 namesUpdated = true;
+              }
+            }
+
+            if (jid && !jid.includes('@g.us')) {
+              const msgId = m.key?.id;
+              const fromMe = Boolean(m.key?.fromMe);
+              const msgStatus = extractMessageStatus(m);
+              if (msgStatus === 'deleted') continue;
+
+              const msgTs = m.messageTimestamp
+                ? m.messageTimestamp * 1000
+                : new Date(m.createdAt || 0).getTime();
+              const targetJids = [jid, ...(alt && !alt.includes('@g.us') ? [alt] : [])];
+
+              if (!fromMe) {
+                const isRead = msgStatus === 'read';
+                for (const tj of targetJids) {
+                  const prev = latestIncomingReadByJid.get(tj);
+                  if (!prev || msgTs >= prev.timestamp) {
+                    latestIncomingReadByJid.set(tj, { timestamp: msgTs, isRead });
+                  }
+                  if (!isRead && msgId) {
+                    const list = unreadMessageKeysByJid.get(tj) || [];
+                    if (!list.some(k => k.id === msgId && k.remoteJid === jid)) {
+                      list.push({ id: msgId, fromMe: false, remoteJid: jid });
+                    }
+                    if (alt && !alt.includes('@g.us') && !list.some(k => k.id === msgId && k.remoteJid === alt)) {
+                      list.push({ id: msgId, fromMe: false, remoteJid: alt });
+                    }
+                    unreadMessageKeysByJid.set(tj, list);
+                  }
+                }
+              } else {
+                const cleanStat: 'sent' | 'delivered' | 'read' = msgStatus;
+                for (const tj of targetJids) {
+                  const prev = latestOutgoingStatusByJid.get(tj);
+                  if (!prev || msgTs >= prev.timestamp) {
+                    latestOutgoingStatusByJid.set(tj, { timestamp: msgTs, status: cleanStat });
+                  }
+                }
               }
             }
           }
@@ -768,6 +812,7 @@ export const whatsappService = {
       const getChatLastMsgText = (c: any): string => {
         if (!c?.lastMessage?.message) return '';
         const m = c.lastMessage.message;
+        const docMsg = m.documentMessage || m.documentWithCaptionMessage?.message?.documentMessage;
         const tplText =
           m.templateMessage?.hydratedFourRowTemplate?.hydratedContentText ||
           m.templateMessage?.interactiveMessageTemplate?.body?.text ||
@@ -776,10 +821,11 @@ export const whatsappService = {
           m.conversation ||
           m.extendedTextMessage?.text ||
           m.imageMessage?.caption ||
+          docMsg?.caption ||
           tplText ||
           (m.audioMessage ? '🎤 Mensagem de áudio' : '') ||
           (m.imageMessage ? '📷 Imagem' : '') ||
-          (m.documentMessage ? '📄 Documento' : '') ||
+          (docMsg ? `📄 ${docMsg.fileName || docMsg.title || 'Documento'}` : '') ||
           ''
         );
       };
@@ -970,7 +1016,55 @@ export const whatsappService = {
         }
 
         const lastTime = c.updatedAt || (c.lastMessage?.messageTimestamp ? new Date(c.lastMessage.messageTimestamp * 1000).toISOString() : new Date().toISOString());
-        const lastMessageStatus = extractMessageStatus(c.lastMessage);
+        const lastMsgTs = new Date(lastTime).getTime();
+
+        let lastMessageStatus = extractMessageStatus(c.lastMessage);
+        if (lastFromMe) {
+          for (const jid of jidCandidates) {
+            const outStat = latestOutgoingStatusByJid.get(jid);
+            if (outStat?.status === 'read') {
+              lastMessageStatus = 'read';
+              break;
+            }
+          }
+        }
+
+        // Gather unread message keys for marking as read in Evolution API
+        const unreadMessageKeys: Array<{ id: string; fromMe: boolean; remoteJid: string }> = [];
+        for (const jid of jidCandidates) {
+          const keys = unreadMessageKeysByJid.get(jid) || [];
+          for (const k of keys) {
+            if (!unreadMessageKeys.some(existing => existing.id === k.id && existing.remoteJid === k.remoteJid)) {
+              unreadMessageKeys.push(k);
+            }
+          }
+        }
+
+        // Also include c.lastMessage.key if it's an incoming message
+        if (!lastFromMe && c.lastMessage?.key?.id) {
+          const lmId = c.lastMessage.key.id;
+          const lmJid = c.lastMessage.key.remoteJid || c.remoteJid;
+          if (lmJid && !unreadMessageKeys.some(k => k.id === lmId && k.remoteJid === lmJid)) {
+            unreadMessageKeys.push({ id: lmId, fromMe: false, remoteJid: lmJid });
+          }
+          if (canonicalJid !== lmJid && !unreadMessageKeys.some(k => k.id === lmId && k.remoteJid === canonicalJid)) {
+            unreadMessageKeys.push({ id: lmId, fromMe: false, remoteJid: canonicalJid });
+          }
+        }
+
+        // Determine if latest incoming message was already marked READ on phone via MessageUpdate
+        let isReadInEvolution = false;
+        for (const jid of jidCandidates) {
+          const incRead = latestIncomingReadByJid.get(jid);
+          if (incRead && incRead.isRead && incRead.timestamp >= lastMsgTs - 15000) {
+            isReadInEvolution = true;
+            break;
+          }
+        }
+
+        const rawUnread = isReadInEvolution
+          ? 0
+          : (typeof c.unreadCount === 'number' ? c.unreadCount : null);
 
         return {
           id: canonicalJid,
@@ -981,8 +1075,10 @@ export const whatsappService = {
           hasHumanName,
           phone: formattedPhone,
           rawPhone: rawPhone,
-          unreadCount: c.unreadCount || 0,
-          rawUnreadCount: typeof c.unreadCount === 'number' ? c.unreadCount : null,
+          unreadCount: isReadInEvolution ? 0 : (c.unreadCount || 0),
+          rawUnreadCount: rawUnread,
+          isReadOnPhone: isReadInEvolution || c.unreadCount === 0 || lastFromMe,
+          unreadMessageKeys,
           profilePicUrl: picUrl,
           lastMessage: lastMsg,
           lastMessageTimestamp: lastTime,
@@ -1012,11 +1108,33 @@ export const whatsappService = {
   },
 
   /**
-   * Marks a chat as read in Evolution API
+   * Marks a chat and its incoming messages as read in Evolution API (synchronizing with phone WhatsApp across all instances)
    */
-  async markChatAsRead(sessionName: string, remoteJids: string[]): Promise<void> {
+  async markChatAsRead(
+    sessionName: string,
+    remoteJids: string[],
+    providedKeys?: Array<{ id: string; fromMe: boolean; remoteJid: string }>
+  ): Promise<void> {
     try {
-      for (const jid of remoteJids) {
+      const uniqueJids = Array.from(new Set(remoteJids.filter(Boolean)));
+      const keysMap = new Map<string, { id: string; fromMe: boolean; remoteJid: string }>();
+
+      const addKey = (id: string, remoteJid: string) => {
+        if (!id || !remoteJid || id.startsWith('optimistic-') || id.startsWith('unlinked-') || id.startsWith('lead-') || id.startsWith('msg-')) return;
+        keysMap.set(`${remoteJid}_${id}`, { id, fromMe: false, remoteJid });
+      };
+
+      if (providedKeys && providedKeys.length > 0) {
+        for (const k of providedKeys) {
+          addKey(k.id, k.remoteJid);
+          for (const jid of uniqueJids) {
+            addKey(k.id, jid);
+          }
+        }
+      }
+
+      // Immediately dispatch any known keys so WhatsApp updates right away
+      if (keysMap.size > 0) {
         fetch(`${EVOLUTION_API_URL}/chat/markMessageAsRead/${sessionName}`, {
           method: 'POST',
           headers: {
@@ -1024,9 +1142,71 @@ export const whatsappService = {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            readMessages: [{ remoteJid: jid, fromMe: false }],
+            readMessages: Array.from(keysMap.values()),
           }),
         }).catch(() => {});
+      }
+
+      // Also query recent messages for these JIDs to ensure any unread incoming messages are marked as read on the phone
+      if (uniqueJids.length > 0) {
+        const results = await Promise.allSettled(
+          uniqueJids.map(jid =>
+            fetch(`${EVOLUTION_API_URL}/chat/findMessages/${sessionName}`, {
+              method: 'POST',
+              headers: {
+                'apikey': EVOLUTION_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                where: {
+                  key: {
+                    remoteJid: jid,
+                  },
+                },
+                limit: 15,
+              }),
+            }).then(r => (r.ok ? r.json() : null))
+          )
+        );
+
+        const fetchedKeysMap = new Map<string, { id: string; fromMe: boolean; remoteJid: string }>();
+        for (const res of results) {
+          if (res.status === 'fulfilled' && res.value) {
+            const records = res.value?.messages?.records || (Array.isArray(res.value) ? res.value : []);
+            let incomingCount = 0;
+            for (const m of records) {
+              if (!m.key?.fromMe && m.key?.id) {
+                const stat = extractMessageStatus(m);
+                if (stat !== 'read' || incomingCount < 3) {
+                  const id = m.key.id;
+                  const rJid = m.key.remoteJid;
+                  const altJid = m.key.remoteJidAlt || m.key.participantAlt;
+                  if (rJid) fetchedKeysMap.set(`${rJid}_${id}`, { id, fromMe: false, remoteJid: rJid });
+                  if (altJid && altJid.includes('@s.whatsapp.net')) {
+                    fetchedKeysMap.set(`${altJid}_${id}`, { id, fromMe: false, remoteJid: altJid });
+                  }
+                  for (const uj of uniqueJids) {
+                    fetchedKeysMap.set(`${uj}_${id}`, { id, fromMe: false, remoteJid: uj });
+                  }
+                  incomingCount++;
+                }
+              }
+            }
+          }
+        }
+
+        if (fetchedKeysMap.size > 0) {
+          await fetch(`${EVOLUTION_API_URL}/chat/markMessageAsRead/${sessionName}`, {
+            method: 'POST',
+            headers: {
+              'apikey': EVOLUTION_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              readMessages: Array.from(fetchedKeysMap.values()),
+            }),
+          }).catch(() => {});
+        }
       }
     } catch {
       // ignore
@@ -1093,10 +1273,12 @@ export const whatsappService = {
               }
 
               const msgObj = m.message || {};
+              const docObj = msgObj.documentMessage || msgObj.documentWithCaptionMessage?.message?.documentMessage;
               const isAudio = Boolean(msgObj.audioMessage);
               const isImage = Boolean(msgObj.imageMessage);
-              const isDoc = Boolean(msgObj.documentMessage);
+              const isDoc = Boolean(docObj);
               const audioSec = msgObj.audioMessage?.seconds || 0;
+              const docFileName = docObj?.fileName || docObj?.title || 'Documento';
 
               const tplText = msgObj.templateMessage?.hydratedFourRowTemplate?.hydratedContentText ||
                               msgObj.templateMessage?.interactiveMessageTemplate?.body?.text ||
@@ -1105,10 +1287,11 @@ export const whatsappService = {
               const text = msgObj.conversation || 
                            msgObj.extendedTextMessage?.text || 
                            msgObj.imageMessage?.caption || 
+                           docObj?.caption ||
                            tplText ||
                            (isAudio ? '🎤 Mensagem de áudio' : '') ||
                            (isImage ? '📷 Imagem' : '') ||
-                           (isDoc ? '📄 Documento' : '') ||
+                           (isDoc ? `📄 ${docFileName}` : '') ||
                            '';
 
               if (!fallbackExtractedName && text) {
@@ -1141,6 +1324,7 @@ export const whatsappService = {
                 senderName: validSender,
                 text: text,
                 mediaType: isAudio ? 'audio' : (isImage ? 'image' : (isDoc ? 'document' : undefined)),
+                mediaName: isDoc ? docFileName : undefined,
                 audioDuration: isAudio ? audioSec : undefined,
                 audioUrl: msgObj.audioMessage?.url || undefined,
                 timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
@@ -1213,7 +1397,7 @@ export const whatsappService = {
   },
 
   /**
-   * Fetches the base64 data for an audio or media message from Evolution API
+   * Fetches the base64 data for an audio, image, or document message from Evolution API
    */
   async getMediaBase64(sessionName: string, messageId: string): Promise<{ base64: string; mimetype: string } | null> {
     try {
@@ -1236,10 +1420,104 @@ export const whatsappService = {
       const data = await res.json();
       return {
         base64: data.base64,
-        mimetype: data.mimetype || 'audio/ogg; codecs=opus',
+        mimetype: data.mimetype || 'application/octet-stream',
       };
     } catch (err) {
       console.warn('Error fetching media base64 from Evolution API:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Sends an image or document attachment via Evolution API and logs into Supabase
+   */
+  async sendMediaMessage(
+    sessionName: string,
+    phoneNumber: string,
+    base64DataUrl: string,
+    fileName: string,
+    mimeType: string,
+    caption: string = '',
+    corretorId?: string,
+    leadId?: string
+  ): Promise<WhatsAppMessage | null> {
+    try {
+      const targetNumber = formatTargetNumber(phoneNumber);
+      const pureBase64 = base64DataUrl.includes('base64,') ? base64DataUrl.split('base64,')[1] : base64DataUrl;
+      const isImage = mimeType.startsWith('image/');
+      const mediatype = isImage ? 'image' : 'document';
+
+      const res = await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${sessionName}`, {
+        method: 'POST',
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          number: targetNumber,
+          mediatype,
+          mimetype: mimeType || (isImage ? 'image/jpeg' : 'application/pdf'),
+          caption: caption || '',
+          media: pureBase64,
+          fileName: fileName || (isImage ? 'imagem.jpg' : 'documento.pdf'),
+          delay: 1200,
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error('Evolution API sendMedia failed:', res.status, errText);
+        return null;
+      }
+
+      const resData = await res.json();
+      const msgId = resData?.key?.id || `media-${Date.now()}`;
+      const timestamp = new Date().toISOString();
+      const displayText = caption.trim() || (isImage ? '📷 Imagem' : `📄 ${fileName}`);
+
+      const isUuid = (str?: string) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
+      const validLeadId = isUuid(leadId) ? leadId : null;
+
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from('whatsapp_messages').insert([{
+            lead_id: validLeadId,
+            corretor_id: corretorId || null,
+            remetente_tipo: 'corretor',
+            mensagem: displayText,
+            midia_url: null,
+            enviada_at: timestamp,
+            status_envio: 'sent',
+          }]);
+        } catch {
+          // ignore
+        }
+
+        if (validLeadId) {
+          try {
+            await supabase.from('leads').update({
+              ultima_interacao_at: timestamp,
+            }).eq('id', validLeadId);
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      return {
+        id: msgId,
+        leadId: leadId || targetNumber,
+        corretorId: corretorId,
+        fromMe: true,
+        text: displayText,
+        mediaType: isImage ? 'image' : 'document',
+        mediaName: fileName,
+        mediaUrl: base64DataUrl,
+        timestamp: timestamp,
+        status: 'delivered',
+      };
+    } catch (err) {
+      console.error('Error sending media message:', err);
       return null;
     }
   },

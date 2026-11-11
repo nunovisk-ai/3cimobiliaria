@@ -215,7 +215,10 @@ const AppContent: React.FC = () => {
 
   const handleCreateLead = async (newLead: Partial<Lead>) => {
     try {
-      await leadsService.createLead(newLead, user?.id);
+      const created = await leadsService.createLead(newLead, user?.id);
+      if (created?.id) {
+        setChatTargetLeadId(created.id);
+      }
       await loadData();
       setIsNewLeadModalOpen(false);
     } catch (err) {
