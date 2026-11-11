@@ -147,8 +147,8 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               <Building2 className="w-4 h-4 text-brand-500" />
               <span>Progresso do Desenvolvimento do CRM</span>
             </h3>
-            <span className="text-xs font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
-              Sprint 4 / 6 Concluída
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+              Sprint 5 / 6 Concluída
             </span>
           </div>
 
@@ -193,14 +193,24 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               </div>
             </div>
 
+            <div className="flex items-start gap-3 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200/60">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="text-emerald-900 block font-semibold">Sprint 5: Conexão WhatsApp QR Code & Inbox Espelhada (Concluída)</strong>
+                <p className="text-emerald-700 text-[11px] mt-0.5">
+                  Conexão individual por corretor via QR Code, histórico espelhado de mensagens com status lido/entregue, respostas rápidas do corretor e painel CRM integrado.
+                </p>
+              </div>
+            </div>
+
             <div className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
               <div className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 font-bold flex items-center justify-center text-[10px] flex-shrink-0 mt-0.5">
-                5
+                6
               </div>
               <div>
-                <strong className="text-slate-800 block font-semibold">Sprint 5: Conexão WhatsApp QR Code & Inbox Espelhada (Próxima)</strong>
+                <strong className="text-slate-800 block font-semibold">Sprint 6: Deploy, Domínio e Ajustes Finais (Próxima)</strong>
                 <p className="text-slate-600 text-[11px] mt-0.5">
-                  Conexão individual por corretor via QR Code, histórico espelhado de mensagens e envio direto pelo CRM.
+                  Configuração do domínio grupo3c.vitrai.com.br, testes integrados de usabilidade e documentação final de operação.
                 </p>
               </div>
             </div>

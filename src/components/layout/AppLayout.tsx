@@ -17,9 +17,19 @@ interface AppLayoutProps {
   children: React.ReactNode;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  isWhatsAppConnected?: boolean;
+  whatsappPhone?: string;
+  onOpenWhatsAppModal?: () => void;
 }
 
-export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTabChange }) => {
+export const AppLayout: React.FC<AppLayoutProps> = ({ 
+  children, 
+  activeTab, 
+  onTabChange,
+  isWhatsAppConnected = false,
+  whatsappPhone,
+  onOpenWhatsAppModal
+}) => {
   const { user, logout, isManager } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -115,12 +125,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children, activeTab, onTab
             
             {/* WhatsApp Live Status Pill */}
             <div 
-              onClick={() => onTabChange('whatsapp')}
-              className="hidden lg:flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2.5 py-1 rounded-full text-[11px] font-medium cursor-pointer hover:bg-emerald-100 transition-colors"
+              onClick={onOpenWhatsAppModal || (() => onTabChange('whatsapp'))}
+              title={isWhatsAppConnected ? "WhatsApp Conectado - Clique para gerenciar" : "WhatsApp Desconectado - Clique para ler QR Code"}
+              className={`hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold cursor-pointer border transition-colors ${
+                isWhatsAppConnected
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+              }`}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className={`w-2 h-2 rounded-full ${isWhatsAppConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
               <Smartphone className="w-3 h-3" />
-              <span>WhatsApp Pareado</span>
+              <span>{isWhatsAppConnected ? (whatsappPhone || 'WhatsApp Ativo') : 'Conectar WhatsApp'}</span>
             </div>
 
             {/* Notification Bell */}

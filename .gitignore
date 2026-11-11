@@ -26,3 +26,7 @@ dist-ssr
 # Environment variables
 .env
 .env.production
+
+# Scripts and temporary tools
+scripts/
+

@@ -20,6 +20,7 @@ interface KanbanBoardProps {
   onNewLead: () => void;
   onMoveLead: (leadId: string, newStatus: FunnelStage) => void;
   onScheduleVisit?: (lead: Lead) => void;
+  onOpenChat?: (leadId: string) => void;
 }
 
 interface ColumnConfig {
@@ -105,7 +106,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   onSelectLead,
   onNewLead,
   onMoveLead,
-  onScheduleVisit
+  onScheduleVisit,
+  onOpenChat
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilterEmp, setSelectedFilterEmp] = useState('all');
@@ -355,7 +357,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between gap-1 flex-wrap">
                           <div className="flex items-center gap-1.5">
                             <button
-                              onClick={(e) => openWhatsApp(e, lead.telefone, lead.nome)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onOpenChat) onOpenChat(lead.id);
+                                else openWhatsApp(e, lead.telefone, lead.nome);
+                              }}
+                              title="Abrir conversa no WhatsApp Inbox"
                               className="text-[10px] bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg font-medium flex items-center gap-1 transition-colors cursor-pointer"
                             >
                               <MessageSquare className="w-3 h-3" />

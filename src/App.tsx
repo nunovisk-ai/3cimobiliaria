@@ -9,9 +9,12 @@ import { NewLeadModal } from './components/leads/NewLeadModal';
 import { EmpreendimentosManager } from './components/empreendimentos/EmpreendimentosManager';
 import { AgendaView } from './components/agenda/AgendaView';
 import { ScheduleVisitModal } from './components/agenda/ScheduleVisitModal';
-import { Lead, FunnelStage } from './types';
+import { WhatsAppInboxView } from './components/whatsapp/WhatsAppInboxView';
+import { WhatsAppConnectModal } from './components/whatsapp/WhatsAppConnectModal';
+import { Lead, FunnelStage, WhatsAppInstance } from './types';
 import { leadsService } from './services/leadsService';
-import { Empreendimento, empreendimentosService } from './services/empreendimentosService';
+import { empreendimentosService, Empreendimento } from './services/empreendimentosService';
+import { whatsappService } from './services/whatsappService';
 
 const AppContent: React.FC = () => {
   const { user, isLoading: authLoading } = useAuth();
@@ -27,9 +30,29 @@ const AppContent: React.FC = () => {
   const [isScheduleVisitOpen, setIsScheduleVisitOpen] = useState(false);
   const [leadForVisit, setLeadForVisit] = useState<Lead | null>(null);
 
+  // WhatsApp state
+  const [whatsappInstance, setWhatsappInstance] = useState<WhatsAppInstance | null>(null);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
+  const [chatTargetLeadId, setChatTargetLeadId] = useState<string | null>(null);
+
   const handleOpenScheduleVisit = (lead?: Lead) => {
     setLeadForVisit(lead || null);
     setIsScheduleVisitOpen(true);
+  };
+
+  const handleOpenChatForLead = (leadId: string) => {
+    setChatTargetLeadId(leadId);
+    setActiveTab('whatsapp');
+  };
+
+  const loadWhatsAppInstance = async () => {
+    if (!user?.email) return;
+    try {
+      const inst = await whatsappService.getInstanceStatus(user.email);
+      setWhatsappInstance(inst);
+    } catch (err) {
+      console.error('Failed to load WhatsApp instance:', err);
+    }
   };
 
   // Empreendimentos state
@@ -55,6 +78,7 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     if (user) {
       loadData();
+      loadWhatsAppInstance();
     }
   }, [user]);
 
@@ -126,7 +150,13 @@ const AppContent: React.FC = () => {
 
   // Authenticated: Show CRM Layout
   return (
-    <AppLayout activeTab={activeTab} onTabChange={(tab: any) => setActiveTab(tab)}>
+    <AppLayout 
+      activeTab={activeTab} 
+      onTabChange={(tab: any) => setActiveTab(tab)}
+      isWhatsAppConnected={whatsappInstance?.status === 'connected'}
+      whatsappPhone={whatsappInstance?.phoneNumber}
+      onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
+    >
       
       {/* 1. VISÃO GERAL DASHBOARD */}
       {activeTab === 'dashboard' && (
@@ -147,6 +177,7 @@ const AppContent: React.FC = () => {
           onNewLead={() => setIsNewLeadModalOpen(true)}
           onMoveLead={handleMoveLead}
           onScheduleVisit={handleOpenScheduleVisit}
+          onOpenChat={handleOpenChatForLead}
         />
       )}
 
@@ -168,25 +199,17 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* 5. WHATSAPP INBOX (Sprint 5) */}
+      {/* 5. WHATSAPP INBOX ESPELHADA (Sprint 5) */}
       {activeTab === 'whatsapp' && (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-          <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center space-y-4 shadow-xs">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center text-2xl font-bold">
-              📱
-            </div>
-            <h3 className="text-lg font-bold text-slate-900">Conexão WhatsApp & Inbox Espelhada</h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Emparelhamento de WhatsApp via QR Code e Inbox espelhada de conversas programado para a <strong>Sprint 5</strong>.
-            </p>
-            <button
-              onClick={() => setActiveTab('kanban')}
-              className="px-4 py-2 bg-brand-500 text-white rounded-xl text-xs font-semibold hover:bg-brand-600 transition-colors cursor-pointer"
-            >
-              Ir para o Funil Kanban
-            </button>
-          </div>
-        </div>
+        <WhatsAppInboxView
+          leads={leads}
+          initialSelectedLeadId={chatTargetLeadId}
+          instance={whatsappInstance}
+          onSelectLeadForCRM={(lead) => setSelectedLead(lead)}
+          onScheduleVisit={handleOpenScheduleVisit}
+          onLeadStageChange={handleMoveLead}
+          onOpenConnectModal={() => setIsWhatsAppModalOpen(true)}
+        />
       )}
 
       {/* Lead Detail Modal */}
@@ -198,6 +221,7 @@ const AppContent: React.FC = () => {
           onSave={handleSaveLead}
           onDelete={handleDeleteLead}
           onScheduleVisit={handleOpenScheduleVisit}
+          onOpenChat={handleOpenChatForLead}
         />
       )}
 
@@ -223,6 +247,16 @@ const AppContent: React.FC = () => {
           onSuccess={() => {
             loadData();
           }}
+        />
+      )}
+
+      {/* WhatsApp Connect QR Code Modal */}
+      {isWhatsAppModalOpen && user && (
+        <WhatsAppConnectModal
+          instance={whatsappInstance}
+          corretorEmail={user.email}
+          onClose={() => setIsWhatsAppModalOpen(false)}
+          onStatusChanged={loadWhatsAppInstance}
         />
       )}
 

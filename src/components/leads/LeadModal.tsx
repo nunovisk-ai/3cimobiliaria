@@ -20,6 +20,7 @@ interface LeadModalProps {
   onSave: (updated: Partial<Lead>) => Promise<void>;
   onDelete: (leadId: string) => Promise<void>;
   onScheduleVisit?: (lead: Lead) => void;
+  onOpenChat?: (leadId: string) => void;
 }
 
 export const LeadModal: React.FC<LeadModalProps> = ({
@@ -28,7 +29,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   onClose,
   onSave,
   onDelete,
-  onScheduleVisit
+  onScheduleVisit,
+  onOpenChat
 }) => {
   const [activeTab, setActiveTab] = useState<'dados' | 'documentos'>('dados');
 
@@ -161,11 +163,18 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
             <button
               type="button"
-              onClick={openWhatsApp}
+              onClick={() => {
+                if (onOpenChat) {
+                  onOpenChat(lead.id);
+                  onClose();
+                } else {
+                  openWhatsApp();
+                }
+              }}
               className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <MessageSquare className="w-3.5 h-3.5" />
-              <span>Chamar no WhatsApp</span>
+              <span>Chat WhatsApp</span>
             </button>
 
             <button

@@ -95,8 +95,24 @@ export interface Visit {
 export interface WhatsAppMessage {
   id: string;
   leadId: string;
+  corretorId?: string;
   fromMe: boolean;
   text: string;
+  mediaUrl?: string;
+  mediaType?: 'image' | 'pdf' | 'audio' | 'document';
+  mediaName?: string;
   timestamp: string;
   status: 'sent' | 'delivered' | 'read';
 }
+
+export interface WhatsAppInstance {
+  id: string;
+  corretorId?: string;
+  sessionName: string;
+  phoneNumber?: string;
+  status: 'disconnected' | 'qrcode_ready' | 'connecting' | 'connected';
+  qrcodeBase64?: string;
+  connectedAt?: string;
+  lastSyncAt?: string;
+}
+
