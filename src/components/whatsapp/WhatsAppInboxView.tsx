@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lead, FunnelStage, WhatsAppMessage, WhatsAppInstance } from '../../types';
-import { whatsappService, formatWhatsAppTimestamp } from '../../services/whatsappService';
+import { whatsappService, formatWhatsAppTimestamp, isValidContactName } from '../../services/whatsappService';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
 import { CurrencyInput } from '../common/CurrencyInput';
+import { LinkifiedText } from '../../utils/linkify';
 import { 
   Search, 
   Send, 
@@ -43,7 +44,7 @@ interface WhatsAppInboxViewProps {
   onScheduleVisit?: (lead: Lead) => void;
   onLeadStageChange?: (leadId: string, newStage: FunnelStage) => void;
   onOpenConnectModal: () => void;
-  onOpenCreateLead?: (initial?: Partial<Lead>) => void;
+  onOpenCreateLead?: (initial?: Partial<Lead> & { sourceLidJid?: string }) => void;
   onUpdateLead?: (leadId: string, updates: Partial<Lead>) => Promise<void>;
   onUnreadCountChange?: (count: number) => void;
 }
@@ -255,10 +256,14 @@ const ImageMessageViewer: React.FC<ImageMessageViewerProps> = ({ message, sessio
       ) : (
         <div className="flex items-center gap-1.5 py-1">
           <ImageIcon className="w-4 h-4 flex-shrink-0" />
-          <span>{message.text || '📷 Imagem'}</span>
+          <span><LinkifiedText text={message.text || '📷 Imagem'} isFromMe={message.fromMe} /></span>
         </div>
       )}
-      {caption && <p className="whitespace-pre-wrap pt-0.5">{caption}</p>}
+      {caption && (
+        <p className="pt-0.5 [overflow-wrap:anywhere]">
+          <LinkifiedText text={caption} isFromMe={message.fromMe} />
+        </p>
+      )}
     </div>
   );
 };
@@ -328,7 +333,11 @@ const DocumentMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: s
         </div>
         <Download className="w-4 h-4 flex-shrink-0 opacity-80" />
       </div>
-      {caption && <p className="whitespace-pre-wrap pt-0.5">{caption}</p>}
+      {caption && (
+        <p className="pt-0.5 [overflow-wrap:anywhere]">
+          <LinkifiedText text={caption} isFromMe={message.fromMe} />
+        </p>
+      )}
     </div>
   );
 };
@@ -455,10 +464,14 @@ const VideoOrGifMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName:
         </div>
       ) : (
         <div className="flex items-center gap-1.5 py-1">
-          <span>{message.text || (isGif ? '👾 GIF' : '🎬 Vídeo')}</span>
+          <span><LinkifiedText text={message.text || (isGif ? '👾 GIF' : '🎬 Vídeo')} isFromMe={message.fromMe} /></span>
         </div>
       )}
-      {caption && <p className="whitespace-pre-wrap pt-0.5">{caption}</p>}
+      {caption && (
+        <p className="pt-0.5 [overflow-wrap:anywhere]">
+          <LinkifiedText text={caption} isFromMe={message.fromMe} />
+        </p>
+      )}
     </div>
   );
 };
@@ -479,8 +492,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   const [unlinkedContacts, setUnlinkedContacts] = useState<UnlinkedContact[]>([]);
   const [realChatMap, setRealChatMap] = useState<Map<string, any>>(new Map());
+  const [leadFallbackPics, setLeadFallbackPics] = useState<Record<string, string>>({});
   const [isLoadingChats, setIsLoadingChats] = useState(true);
   const [brokenPics, setBrokenPics] = useState<Record<string, boolean>>({});
+  const brokenPicsRef = useRef<Record<string, boolean>>({});
+  const unlinkedContactsRef = useRef<UnlinkedContact[]>([]);
+  unlinkedContactsRef.current = unlinkedContacts;
+  const isFetchingPicsRef = useRef(false);
+  const isResolvingRef = useRef(false);
   const recentSentMessagesRef = useRef<Array<{ chatKey: string; msg: WhatsAppMessage; sentAt: number }>>([]);
   const recentChatSnippetsRef = useRef<Record<string, { text: string; timestamp: string; status: 'sent' | 'delivered' | 'read'; updatedAt: number }>>({});
   const readTimestampsRef = useRef<Record<string, number>>({});
@@ -693,24 +712,85 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const unlinkedContact = isConnected ? (unlinkedContacts.find(c => c.id === selectedLeadId) || null) : null;
   const isUnlinked = Boolean(unlinkedContact && !selectedLead);
 
+  const findPicForJids = (picMap: Record<string, string>, jids: string[], rawPhone?: string): string | undefined => {
+    for (const j of jids) {
+      if (j && picMap[j]) return picMap[j];
+    }
+    if (rawPhone) {
+      if (picMap[rawPhone]) return picMap[rawPhone];
+      for (const v of whatsappService.buildPhoneJidVariants(rawPhone)) {
+        if (picMap[v]) return picMap[v];
+      }
+    }
+    return undefined;
+  };
+
   const applyFetchedPictures = (picMap: Record<string, string>) => {
     if (Object.keys(picMap).length === 0) return;
+
     setUnlinkedContacts(prev =>
       prev.map(c => {
-        const pic = picMap[c.remoteJid] || (c.rawPhone ? picMap[c.rawPhone] : undefined);
-        return pic && !c.profilePicUrl ? { ...c, profilePicUrl: pic } : c;
+        const pic = findPicForJids(picMap, [c.remoteJid, ...(c.allJids || [])], c.rawPhone);
+        const canReplace = !c.profilePicUrl || Boolean(brokenPicsRef.current[c.profilePicUrl]);
+        return pic && canReplace ? { ...c, profilePicUrl: pic } : c;
       })
     );
+
     setRealChatMap(prev => {
       const next = new Map(prev);
       for (const [leadId, chatObj] of next.entries()) {
-        const pic = picMap[chatObj.remoteJid] || (chatObj.rawPhone ? picMap[chatObj.rawPhone] : undefined);
-        if (pic && !chatObj.profilePicUrl) {
+        const pic = findPicForJids(picMap, [chatObj.remoteJid, ...(chatObj.allJids || [])], chatObj.rawPhone);
+        const canReplace = !chatObj.profilePicUrl || Boolean(brokenPicsRef.current[chatObj.profilePicUrl]);
+        if (pic && canReplace) {
           next.set(leadId, { ...chatObj, profilePicUrl: pic });
         }
       }
       return next;
     });
+
+    setLeadFallbackPics(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const l of leads) {
+        const digits = (l.telefone || '').replace(/\D/g, '');
+        if (digits.length < 8) continue;
+        const variants = whatsappService.buildPhoneJidVariants(l.telefone);
+        const pic = findPicForJids(picMap, variants, digits);
+        if (pic && (!next[l.id] || brokenPicsRef.current[next[l.id]])) {
+          next[l.id] = pic;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  };
+
+  const handleAvatarError = (brokenUrl: string, jids: string[]) => {
+    if (!brokenUrl) return;
+    brokenPicsRef.current = { ...brokenPicsRef.current, [brokenUrl]: true };
+    setBrokenPics(prev => (prev[brokenUrl] ? prev : { ...prev, [brokenUrl]: true }));
+
+    const cleanJids = jids.filter(Boolean);
+    whatsappService.markPictureUrlBroken(session, cleanJids, brokenUrl);
+
+    const primaryJid = cleanJids[0];
+    if (primaryJid && whatsappService.canRetryBrokenPicture(primaryJid)) {
+      whatsappService.fetchProfilePicture(session, primaryJid, true, cleanJids)
+        .then(newUrl => {
+          if (newUrl && newUrl !== brokenUrl) {
+            if (brokenPicsRef.current[newUrl]) {
+              const updatedBroken = { ...brokenPicsRef.current };
+              delete updatedBroken[newUrl];
+              brokenPicsRef.current = updatedBroken;
+              setBrokenPics(updatedBroken);
+            }
+            const picUpdate: Record<string, string> = {};
+            for (const j of cleanJids) picUpdate[j] = newUrl;
+            applyFetchedPictures(picUpdate);
+          }
+        })
+        .catch(() => {});
+    }
   };
 
   // Load real chats from Evolution API
@@ -756,17 +836,20 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
         const matchedLead = leads.find(l => {
           const leadDigits = (l.telefone || '').replace(/\D/g, '');
-          if (!leadDigits || !cleanChatDigits) return false;
+          if (leadDigits.length < 8 || cleanChatDigits.length < 8) return false;
           return leadDigits.slice(-8) === cleanChatDigits.slice(-8);
         });
 
-        // If the user just generated a lead for the currently selected unlinked contact, seamlessly transition selection to the new lead ID
+        // Seamlessly keep selection when an unlinked @lid gets mapped to a CRM lead or to a canonical @s.whatsapp.net JID
         if (
-          matchedLead &&
           selectedLeadId &&
           (selectedLeadId === chat.remoteJid || chat.allJids?.includes(selectedLeadId))
         ) {
-          transitionedLeadId = matchedLead.id;
+          if (matchedLead) {
+            transitionedLeadId = matchedLead.id;
+          } else if (selectedLeadId !== chat.remoteJid) {
+            transitionedLeadId = chat.remoteJid;
+          }
         }
 
         const chatKey = matchedLead ? matchedLead.id : chat.remoteJid;
@@ -844,13 +927,31 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         };
 
         if (matchedLead) {
-          chatMap.set(matchedLead.id, enrichedChat);
+          const prevChat = chatMap.get(matchedLead.id);
+          if (!prevChat) {
+            chatMap.set(matchedLead.id, enrichedChat);
+          } else {
+            const prevTs = new Date(prevChat.lastMessageTimestamp || 0).getTime();
+            const curTs = new Date(enrichedChat.lastMessageTimestamp || 0).getTime();
+            const mergedJids = Array.from(new Set([...(prevChat.allJids || []), ...(enrichedChat.allJids || [])]));
+            const prevPicValid = prevChat.profilePicUrl && !brokenPicsRef.current[prevChat.profilePicUrl] ? prevChat.profilePicUrl : null;
+            const curPicValid = enrichedChat.profilePicUrl && !brokenPicsRef.current[enrichedChat.profilePicUrl] ? enrichedChat.profilePicUrl : null;
+            const newer = curTs >= prevTs ? enrichedChat : prevChat;
+            chatMap.set(matchedLead.id, {
+              ...newer,
+              allJids: mergedJids,
+              profilePicUrl: newer.profilePicUrl && !brokenPicsRef.current[newer.profilePicUrl]
+                ? newer.profilePicUrl
+                : (curPicValid || prevPicValid || null),
+              unreadCount: Math.max(prevChat.unreadCount || 0, enrichedChat.unreadCount || 0),
+            });
+          }
         } else {
           unlinkedList.push({
             id: chat.remoteJid,
             remoteJid: chat.remoteJid,
             allJids: chat.allJids && chat.allJids.length > 0 ? chat.allJids : [chat.remoteJid],
-            nome: chat.pushName || chat.name || chat.phone,
+            nome: chat.pushName || chat.name || chat.phone || 'Contato WhatsApp',
             telefone: chat.phone,
             rawPhone: chat.rawPhone,
             mensagem: finalLastMessage || 'Conversa iniciada via WhatsApp',
@@ -888,27 +989,69 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         }
       }
 
-      // Progressive background enrichment for missing profile pictures across the conversation list
-      const missingPicJids = chats
-        .slice(0, 180)
-        .filter(c => !c.profilePicUrl && c.remoteJid)
-        .map(c => c.remoteJid);
+      // Background resolver for @lid chats or nameless chats whose messages weren't in the global top 500 window
+      const unresolvedJids = chats
+        .filter(c => (c.remoteJid?.includes('@lid') && !c.rawPhone) || !c.hasHumanName)
+        .map(c => c.remoteJid)
+        .filter(Boolean);
 
-      if (missingPicJids.length > 0) {
-        whatsappService.fetchProfilePicturesBatch(session, missingPicJids)
-          .then(picMap => {
-            applyFetchedPictures(picMap);
-            if (missingPicJids.length > 25) {
-              return whatsappService.fetchProfilePicturesBatch(session, missingPicJids.slice(25));
-            }
-            return {};
-          })
-          .then(picMap2 => {
-            if (picMap2 && Object.keys(picMap2).length > 0) {
-              applyFetchedPictures(picMap2);
+      if (unresolvedJids.length > 0 && !isResolvingRef.current) {
+        isResolvingRef.current = true;
+        whatsappService.resolveUnresolvedChats(session, unresolvedJids)
+          .then(({ discoveredLids, discoveredNames }) => {
+            if (discoveredLids > 0 || discoveredNames > 0) {
+              loadChats();
             }
           })
-          .catch(() => {});
+          .catch(() => {})
+          .finally(() => {
+            isResolvingRef.current = false;
+          });
+      }
+
+      // Progressive background enrichment for missing profile pictures across ALL chats & unlinked/linked leads (no 50-item cap)
+      const missingPicItems: Array<{ jid: string; allJids: string[] }> = [];
+      const queuedJids = new Set<string>();
+
+      for (const c of chats) {
+        const needsPic = !c.profilePicUrl || Boolean(brokenPicsRef.current[c.profilePicUrl]);
+        if (needsPic && c.remoteJid && !queuedJids.has(c.remoteJid)) {
+          queuedJids.add(c.remoteJid);
+          missingPicItems.push({
+            jid: c.remoteJid,
+            allJids: c.allJids && c.allJids.length > 0 ? c.allJids : [c.remoteJid],
+          });
+        }
+      }
+
+      for (const l of leads) {
+        if (!chatMap.has(l.id) && l.telefone && !leadFallbackPics[l.id]) {
+          const variants = whatsappService.buildPhoneJidVariants(l.telefone);
+          if (variants.length > 0 && !queuedJids.has(variants[0])) {
+            queuedJids.add(variants[0]);
+            missingPicItems.push({ jid: variants[0], allJids: variants });
+          }
+        }
+      }
+
+      if (missingPicItems.length > 0 && !isFetchingPicsRef.current) {
+        isFetchingPicsRef.current = true;
+        const maxItems = missingPicItems.slice(0, 160);
+        (async () => {
+          try {
+            for (let i = 0; i < maxItems.length; i += 20) {
+              const chunk = maxItems.slice(i, i + 20);
+              const picMap = await whatsappService.fetchProfilePicturesBatch(session, chunk);
+              if (picMap && Object.keys(picMap).length > 0) {
+                applyFetchedPictures(picMap);
+              }
+            }
+          } catch {
+            // ignore
+          } finally {
+            isFetchingPicsRef.current = false;
+          }
+        })();
       }
     } catch (err) {
       console.warn('Erro ao carregar chats reais:', err);
@@ -989,11 +1132,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
       let leadId: string | undefined = undefined;
 
       if (isContactUnlinked) {
-        const contact = unlinkedContacts.find(c => c.id === leadIdOrJid);
+        const contact = unlinkedContactsRef.current.find(c => c.id === leadIdOrJid);
         if (contact) {
           targetJids = contact.allJids && contact.allJids.length > 0 ? contact.allJids : [contact.remoteJid];
-          if (!contact.profilePicUrl && contact.remoteJid) {
-            whatsappService.fetchProfilePicture(session, contact.remoteJid).then(url => {
+          if ((!contact.profilePicUrl || brokenPicsRef.current[contact.profilePicUrl]) && contact.remoteJid) {
+            whatsappService.fetchProfilePicture(session, contact.remoteJid, false, targetJids).then(url => {
               if (url) applyFetchedPictures({ [contact.remoteJid]: url });
             }).catch(() => {});
           }
@@ -1010,13 +1153,18 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           } else if (realChat?.remoteJid) {
             targetJids = [realChat.remoteJid];
           } else {
-            const clean = lead.telefone.replace(/\D/g, '');
-            const ddi = clean.startsWith('55') ? clean : `55${clean}`;
-            targetJids = [`${ddi}@s.whatsapp.net`];
+            targetJids = whatsappService.buildPhoneJidVariants(lead.telefone);
           }
-          if (realChat && !realChat.profilePicUrl && realChat.remoteJid) {
-            whatsappService.fetchProfilePicture(session, realChat.remoteJid).then(url => {
-              if (url) applyFetchedPictures({ [realChat.remoteJid]: url });
+          const currentPic = realChat?.profilePicUrl || leadFallbackPics[lead.id];
+          if ((!currentPic || brokenPicsRef.current[currentPic]) && targetJids.length > 0) {
+            const primaryJid = realChat?.remoteJid || targetJids[0];
+            whatsappService.fetchProfilePicture(session, primaryJid, false, targetJids).then(url => {
+              if (url) {
+                const map: Record<string, string> = {};
+                for (const j of targetJids) map[j] = url;
+                map[primaryJid] = url;
+                applyFetchedPictures(map);
+              }
             }).catch(() => {});
           }
         }
@@ -1031,12 +1179,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         }
 
         if (isContactUnlinked) {
-          const discoveredName = [...msgs].reverse().find(m => !m.fromMe && m.senderName)?.senderName;
+          const discoveredName = [...msgs].reverse().find(m => !m.fromMe && isValidContactName(m.senderName))?.senderName;
           if (discoveredName) {
             setUnlinkedContacts(prev =>
               prev.map(c =>
-                c.id === leadIdOrJid &&
-                (c.nome === 'Contato WhatsApp' || /^\+?[\d\s().-]+$/.test(c.nome.trim()))
+                c.id === leadIdOrJid && !isValidContactName(c.nome)
                   ? { ...c, nome: discoveredName }
                   : c
               )
@@ -1131,17 +1278,17 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     const interval = setInterval(() => {
       loadChats();
       if (selectedLeadId) {
-        const isCurUnlinked = unlinkedContacts.some(c => c.id === selectedLeadId);
+        const isCurUnlinked = unlinkedContactsRef.current.some(c => c.id === selectedLeadId);
         loadMessages(selectedLeadId, isCurUnlinked, true);
       }
     }, 3500);
     return () => clearInterval(interval);
-  }, [isConnected, session, selectedLeadId, unlinkedContacts]);
+  }, [isConnected, session, selectedLeadId, leads]);
 
   useEffect(() => {
     if (selectedLeadId && isConnected) {
       isInitialLoadRef.current = true;
-      const isCurUnlinked = unlinkedContacts.some(c => c.id === selectedLeadId);
+      const isCurUnlinked = unlinkedContactsRef.current.some(c => c.id === selectedLeadId);
       loadMessages(selectedLeadId, isCurUnlinked, false);
     } else {
       setMessages([]);
@@ -1853,7 +2000,8 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                             <img 
                               src={contact.profilePicUrl} 
                               alt={contact.nome} 
-                              onError={() => setBrokenPics(prev => ({ ...prev, [contact.profilePicUrl!]: true }))}
+                              referrerPolicy="no-referrer"
+                              onError={() => handleAvatarError(contact.profilePicUrl!, [contact.remoteJid, ...(contact.allJids || [])])}
                               className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
                             />
                           ) : (
@@ -1908,6 +2056,10 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   const stageConf = STAGE_CONFIG[lead.statusFunil] || STAGE_CONFIG.novo_lead;
                   const unreadCount = realChat?.unreadCount || 0;
                   const hasUnread = unreadCount > 0;
+                  const leadPic = realChat?.profilePicUrl || leadFallbackPics[lead.id];
+                  const leadJids = realChat?.allJids?.length
+                    ? realChat.allJids
+                    : whatsappService.buildPhoneJidVariants(lead.telefone);
 
                   return (
                     <div
@@ -1927,11 +2079,12 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
                       {/* Lead Avatar */}
                       <div className="relative flex-shrink-0">
-                        {realChat?.profilePicUrl && !brokenPics[realChat.profilePicUrl] ? (
+                        {leadPic && !brokenPics[leadPic] ? (
                           <img 
-                            src={realChat.profilePicUrl}
+                            src={leadPic}
                             alt={lead.nome}
-                            onError={() => setBrokenPics(prev => ({ ...prev, [realChat.profilePicUrl]: true }))}
+                            referrerPolicy="no-referrer"
+                            onError={() => handleAvatarError(leadPic, leadJids)}
                             className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
                           />
                         ) : (
@@ -2009,14 +2162,23 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="relative flex-shrink-0">
                   {(() => {
-                    const headerPic = isUnlinked ? unlinkedContact?.profilePicUrl : realChatMap.get(selectedLead?.id || '')?.profilePicUrl;
+                    const selectedRealChat = selectedLead ? realChatMap.get(selectedLead.id) : null;
+                    const headerPic = isUnlinked
+                      ? unlinkedContact?.profilePicUrl
+                      : (selectedRealChat?.profilePicUrl || (selectedLead ? leadFallbackPics[selectedLead.id] : undefined));
                     const headerName = isUnlinked ? unlinkedContact!.nome : selectedLead!.nome;
+                    const headerJids = isUnlinked
+                      ? [unlinkedContact!.remoteJid, ...(unlinkedContact!.allJids || [])]
+                      : (selectedRealChat?.allJids?.length
+                          ? selectedRealChat.allJids
+                          : whatsappService.buildPhoneJidVariants(selectedLead!.telefone));
                     if (headerPic && !brokenPics[headerPic]) {
                       return (
                         <img 
                           src={headerPic}
                           alt={headerName}
-                          onError={() => setBrokenPics(prev => ({ ...prev, [headerPic]: true }))}
+                          referrerPolicy="no-referrer"
+                          onError={() => handleAvatarError(headerPic, headerJids)}
                           className="w-9 h-9 rounded-2xl object-cover shadow-xs"
                         />
                       );
@@ -2071,8 +2233,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   /* Action to generate lead for unlinked contact */
                   <button
                     onClick={() => onOpenCreateLead?.({
-                      nome: unlinkedContact!.nome,
-                      telefone: unlinkedContact!.telefone
+                      nome: isValidContactName(unlinkedContact!.nome) ? unlinkedContact!.nome : '',
+                      telefone: unlinkedContact!.telefone || '',
+                      sourceLidJid: unlinkedContact!.remoteJid.includes('@lid') ? unlinkedContact!.remoteJid : undefined,
                     })}
                     className="px-3 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
                   >
@@ -2156,10 +2319,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               ) : (
                 messages.map(msg => {
                   const contactOrLeadName = isUnlinked ? unlinkedContact?.nome : selectedLead?.nome;
-                  const isContactNameNumeric = contactOrLeadName ? /^\+?[\d\s().-]+$/.test(contactOrLeadName.trim()) : true;
-                  const senderDisplay = !isContactNameNumeric
+                  const senderDisplay = isValidContactName(contactOrLeadName)
                     ? contactOrLeadName
-                    : (msg.senderName || undefined);
+                    : (isValidContactName(msg.senderName) ? msg.senderName : undefined);
 
                   return (
                     <div
@@ -2192,7 +2354,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         ) : msg.mediaType === 'document' ? (
                           <DocumentMessageViewer message={msg} sessionName={session} />
                         ) : (
-                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                          <p className="[overflow-wrap:anywhere]">
+                            <LinkifiedText text={msg.text} isFromMe={msg.fromMe} />
+                          </p>
                         )}
 
                         {/* Footer: Timestamp & Read Receipt Checkmarks */}
@@ -2459,15 +2623,18 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Telefone:</span>
-                    <span className="text-slate-800 font-medium">{unlinkedContact!.telefone}</span>
+                    <span className="text-slate-800 font-medium">
+                      {unlinkedContact!.telefone || 'Identificando número...'}
+                    </span>
                   </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => onOpenCreateLead?.({
-                    nome: unlinkedContact!.nome,
-                    telefone: unlinkedContact!.telefone
+                    nome: isValidContactName(unlinkedContact!.nome) ? unlinkedContact!.nome : '',
+                    telefone: unlinkedContact!.telefone || '',
+                    sourceLidJid: unlinkedContact!.remoteJid.includes('@lid') ? unlinkedContact!.remoteJid : undefined,
                   })}
                   className="w-full py-3 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
                 >

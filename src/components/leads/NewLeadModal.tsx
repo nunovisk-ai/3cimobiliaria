@@ -5,6 +5,7 @@ import { X, UserPlus } from 'lucide-react';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
 import { formatPhoneBR } from '../../utils/phoneMask';
 import { CurrencyInput } from '../common/CurrencyInput';
+import { isValidContactName } from '../../services/whatsappService';
 
 interface NewLeadModalProps {
   empreendimentos: Empreendimento[];
@@ -19,7 +20,9 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   onClose,
   onCreate
 }) => {
-  const [nome, setNome] = useState(initialValues?.nome || '');
+  const [nome, setNome] = useState(
+    initialValues?.nome && isValidContactName(initialValues.nome) ? initialValues.nome : ''
+  );
   const [telefone, setTelefone] = useState(initialValues?.telefone ? formatPhoneBR(initialValues.telefone) : '');
   const [email, setEmail] = useState(initialValues?.email || '');
   const [cpf, setCpf] = useState(initialValues?.cpf || '');

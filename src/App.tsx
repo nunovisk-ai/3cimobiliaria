@@ -37,6 +37,7 @@ const AppContent: React.FC = () => {
   const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
   const [chatTargetLeadId, setChatTargetLeadId] = useState<string | null>(null);
   const [newLeadInitialValues, setNewLeadInitialValues] = useState<Partial<Lead> | undefined>(undefined);
+  const [pendingWhatsAppLid, setPendingWhatsAppLid] = useState<string | null>(null);
   const [unreadWhatsAppCount, setUnreadWhatsAppCount] = useState<number>(0);
 
   const handleOpenScheduleVisit = (lead?: Lead) => {
@@ -49,8 +50,15 @@ const AppContent: React.FC = () => {
     setActiveTab('whatsapp');
   };
 
-  const handleOpenCreateLead = (initial?: Partial<Lead>) => {
-    setNewLeadInitialValues(initial);
+  const handleOpenCreateLead = (initial?: Partial<Lead> & { sourceLidJid?: string }) => {
+    if (initial) {
+      const { sourceLidJid, ...leadInitial } = initial;
+      setPendingWhatsAppLid(sourceLidJid && sourceLidJid.includes('@lid') ? sourceLidJid : null);
+      setNewLeadInitialValues(leadInitial);
+    } else {
+      setPendingWhatsAppLid(null);
+      setNewLeadInitialValues(undefined);
+    }
     setIsNewLeadModalOpen(true);
   };
 
@@ -142,7 +150,7 @@ const AppContent: React.FC = () => {
 
           const matchedLead = leads.find(l => {
             const leadDigits = (l.telefone || '').replace(/\D/g, '');
-            if (!leadDigits || !cleanChatDigits) return false;
+            if (leadDigits.length < 8 || cleanChatDigits.length < 8) return false;
             return leadDigits.slice(-8) === cleanChatDigits.slice(-8);
           });
           const chatKey = matchedLead ? matchedLead.id : chat.remoteJid;
@@ -216,6 +224,14 @@ const AppContent: React.FC = () => {
   const handleCreateLead = async (newLead: Partial<Lead>) => {
     try {
       const created = await leadsService.createLead(newLead, user?.id);
+      if (pendingWhatsAppLid && whatsappInstance?.sessionName && (created?.telefone || newLead.telefone)) {
+        whatsappService.registerLidMapping(
+          whatsappInstance.sessionName,
+          pendingWhatsAppLid,
+          created?.telefone || newLead.telefone || ''
+        );
+      }
+      setPendingWhatsAppLid(null);
       if (created?.id) {
         setChatTargetLeadId(created.id);
       }
@@ -344,6 +360,7 @@ const AppContent: React.FC = () => {
           onClose={() => {
             setIsNewLeadModalOpen(false);
             setNewLeadInitialValues(undefined);
+            setPendingWhatsAppLid(null);
           }}
           onCreate={handleCreateLead}
         />
