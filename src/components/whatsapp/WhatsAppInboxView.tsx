@@ -28,9 +28,11 @@ import {
   Download,
   X,
   PanelRightClose,
-  PanelRightOpen
+  PanelRightOpen,
+  Maximize2
 } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
+import { formatPhoneBR } from '../../utils/phoneMask';
 
 interface WhatsAppInboxViewProps {
   leads: Lead[];
@@ -189,9 +191,15 @@ const AudioMessagePlayer: React.FC<{ message: WhatsAppMessage; sessionName: stri
 };
 
 /**
- * Embedded Image Message Viewer with lazy Base64 loading
+ * Embedded Image Message Viewer with lazy Base64 loading & in-app preview
  */
-const ImageMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: string }> = ({ message, sessionName }) => {
+interface ImageMessageViewerProps {
+  message: WhatsAppMessage;
+  sessionName: string;
+  onPreviewImage?: (preview: { url: string; caption?: string }) => void;
+}
+
+const ImageMessageViewer: React.FC<ImageMessageViewerProps> = ({ message, sessionName, onPreviewImage }) => {
   const [imgSrc, setImgSrc] = useState<string | null>(message.mediaUrl || null);
   const [isLoadingImg, setIsLoadingImg] = useState(false);
 
@@ -221,13 +229,25 @@ const ImageMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: stri
   return (
     <div className="space-y-1.5 my-0.5">
       {imgSrc ? (
-        <a href={imgSrc} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-xl border border-black/10">
-          <img
-            src={imgSrc}
-            alt={caption || 'Imagem do WhatsApp'}
-            className="max-h-64 w-auto object-cover rounded-xl hover:opacity-95 transition-opacity"
-          />
-        </a>
+        <button
+          type="button"
+          onClick={() => onPreviewImage?.({ url: imgSrc, caption: caption || 'Imagem do WhatsApp' })}
+          className="block text-left overflow-hidden rounded-xl border border-black/10 group cursor-pointer focus:outline-none"
+          title="Clique para visualizar na conversa"
+        >
+          <div className="relative">
+            <img
+              src={imgSrc}
+              alt={caption || 'Imagem do WhatsApp'}
+              className="max-h-64 w-auto object-cover rounded-xl group-hover:scale-[1.01] transition-transform duration-200"
+            />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/15 transition-colors rounded-xl flex items-center justify-center opacity-0 group-hover:opacity-100">
+              <span className="p-2 bg-slate-900/80 text-white rounded-full shadow-md">
+                <Maximize2 className="w-4 h-4" />
+              </span>
+            </div>
+          </div>
+        </button>
       ) : isLoadingImg ? (
         <div className="w-48 h-36 rounded-xl bg-black/10 animate-pulse flex items-center justify-center text-[11px]">
           Carregando imagem...
@@ -622,6 +642,19 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<any>(null);
 
+  // In-App Image Lightbox Modal State
+  const [imageLightbox, setImageLightbox] = useState<{ url: string; caption?: string } | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setImageLightbox(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // States for Lead Profile Drawer (matching exact structure & order of NewLeadModal)
   const [editNome, setEditNome] = useState('');
   const [editTelefone, setEditTelefone] = useState('');
@@ -888,7 +921,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   useEffect(() => {
     if (selectedLead) {
       setEditNome(selectedLead.nome || '');
-      setEditTelefone(selectedLead.telefone || '');
+      setEditTelefone(formatPhoneBR(selectedLead.telefone || ''));
       setEditEmail(selectedLead.email || '');
       setEditCpf(selectedLead.cpf ? formatCPF(selectedLead.cpf) : '');
       setEditCpfError(null);
@@ -2155,7 +2188,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         ) : msg.mediaType === 'gif' || msg.mediaType === 'video' ? (
                           <VideoOrGifMessageViewer message={msg} sessionName={session} />
                         ) : msg.mediaType === 'image' ? (
-                          <ImageMessageViewer message={msg} sessionName={session} />
+                          <ImageMessageViewer message={msg} sessionName={session} onPreviewImage={setImageLightbox} />
                         ) : msg.mediaType === 'document' ? (
                           <DocumentMessageViewer message={msg} sessionName={session} />
                         ) : (
@@ -2468,8 +2501,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         type="text"
                         required
                         value={editTelefone}
-                        onChange={(e) => setEditTelefone(e.target.value)}
+                        onChange={(e) => setEditTelefone(formatPhoneBR(e.target.value))}
                         placeholder="(11) 98765-4321"
+                        maxLength={15}
                         className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-900"
                       />
                     </div>
@@ -2686,7 +2720,65 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
       </div>
 
+      {/* IN-APP IMAGE LIGHTBOX MODAL */}
+      {imageLightbox && (
+        <div 
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none"
+          onClick={() => setImageLightbox(null)}
+        >
+          {/* Top Actions Bar */}
+          <div 
+            className="w-full max-w-4xl flex items-center justify-between py-2 px-3 mb-2 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 max-w-md truncate">
+              <ImageIcon className="w-4 h-4 text-brand-400 flex-shrink-0" />
+              <span className="text-xs font-medium text-slate-200 truncate">
+                {imageLightbox.caption || 'Foto do WhatsApp'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <a
+                href={imageLightbox.url}
+                download={`whatsapp_imagem_${Date.now()}.jpg`}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                title="Baixar imagem"
+              >
+                <Download className="w-4 h-4" />
+              </a>
+              <button
+                type="button"
+                onClick={() => setImageLightbox(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-rose-600/80 text-white transition-colors cursor-pointer"
+                title="Fechar visualização (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Centered Image Container */}
+          <div 
+            className="relative max-w-4xl max-h-[85vh] flex flex-col items-center justify-center overflow-hidden rounded-2xl shadow-2xl border border-white/10 bg-black/40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={imageLightbox.url}
+              alt={imageLightbox.caption || 'Imagem'}
+              className="max-h-[80vh] max-w-full w-auto object-contain rounded-2xl"
+            />
+            {imageLightbox.caption && (
+              <div className="w-full bg-slate-900/95 text-white px-4 py-2.5 text-xs text-center border-t border-white/10 backdrop-blur-xs">
+                {imageLightbox.caption}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
+
 

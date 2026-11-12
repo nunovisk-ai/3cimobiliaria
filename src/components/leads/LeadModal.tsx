@@ -4,17 +4,20 @@ import { Empreendimento } from '../../services/empreendimentosService';
 import { LeadChecklistSection } from './LeadChecklistSection';
 import { 
   X, 
-  Calculator, 
   Trash2, 
   Save,
   FileCheck2,
   User,
   Calendar,
   UserX,
-  RotateCcw
+  RotateCcw,
+  ExternalLink,
+  Copy,
+  Check
 } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
+import { formatPhoneBR } from '../../utils/phoneMask';
 import { ConfirmModal } from '../common/ConfirmModal';
 import { CurrencyInput } from '../common/CurrencyInput';
 
@@ -59,13 +62,16 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [cpfError, setCpfError] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<'discard' | 'delete' | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  // Financial simulation calculations (Caixa / MCMV standards)
+  const handleCopyField = (fieldKey: string, text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldKey);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
+
   const renda = Number(formData.rendaMensal) || 0;
-  const fgts = Number(formData.fgtsValor) || 0;
-  const parcelaMaxima = renda * 0.30;
-  const financiadoEstimado = parcelaMaxima > 0 ? parcelaMaxima * 75 : 0;
-  const poderCompraTotal = financiadoEstimado + fgts;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,7 +252,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             }`}
           >
             <User className="w-3.5 h-3.5" />
-            <span>Ficha do Lead & Simulação Caixa</span>
+            <span>Ficha do Lead</span>
           </button>
 
           <button
@@ -266,49 +272,125 @@ export const LeadModal: React.FC<LeadModalProps> = ({
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-6 sm:p-8">
           
-          {/* TAB 1: DADOS & SIMULAÇÃO */}
+          {/* TAB 1: DADOS */}
           {activeTab === 'dados' && (
             <form onSubmit={handleSubmit} className="space-y-6">
               
               {/* Caixa Simulator Card */}
-              <div className="bg-gradient-to-br from-orange-50 via-amber-50/50 to-orange-50/30 p-5 rounded-2xl border border-orange-200/80 shadow-2xs">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 text-brand-900 font-bold text-xs uppercase tracking-wider">
-                    <Calculator className="w-4 h-4 text-brand-600" />
-                    <span>Simulação Instantânea Caixa Econômica / MCMV</span>
+              <div className="bg-gradient-to-br from-blue-50/90 via-sky-50/40 to-orange-50/30 p-5 rounded-2xl border border-blue-200/90 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
+                      CEF
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                          Simulador Habitacional Caixa Econômica
+                        </h4>
+                        <span className="text-[10px] bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">
+                          Oficial MCMV / SBPE
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Acesse o simulador oficial da Caixa. Clique nos dados abaixo para copiar e colar no portal.
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-[10px] bg-brand-500 text-white px-2 py-0.5 rounded-full font-semibold">
-                    Cálculo Automático
-                  </span>
+
+                  <a
+                    href="https://simuladorhabitacao.caixa.gov.br/simulacao"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs hover:shadow-md transition-all flex-shrink-0 cursor-pointer"
+                  >
+                    <span>Abrir Simulador da Caixa</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                  <div className="bg-white p-3 rounded-xl border border-orange-200/80 shadow-2xs">
-                    <span className="text-[10px] text-slate-400 block font-medium">Renda Bruta</span>
-                    <strong className="text-sm font-bold text-slate-900">
-                      R$ {renda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </strong>
+                {/* Quick Copy Data Chips */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                  {/* CPF */}
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between shadow-2xs">
+                    <div className="min-w-0 pr-1">
+                      <span className="text-[10px] text-slate-400 block font-medium">CPF do Lead</span>
+                      <strong className="text-xs text-slate-800 font-mono truncate block">
+                        {formData.cpf || 'Não informado'}
+                      </strong>
+                    </div>
+                    {formData.cpf && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyField('cpf', formData.cpf)}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer flex-shrink-0"
+                        title="Copiar CPF"
+                      >
+                        {copiedField === 'cpf' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
                   </div>
 
-                  <div className="bg-white p-3 rounded-xl border border-orange-200/80 shadow-2xs">
-                    <span className="text-[10px] text-slate-400 block font-medium">Saldo FGTS</span>
-                    <strong className="text-sm font-bold text-emerald-600">
-                      R$ {fgts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </strong>
+                  {/* Data Nascimento */}
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between shadow-2xs">
+                    <div className="min-w-0 pr-1">
+                      <span className="text-[10px] text-slate-400 block font-medium">Nascimento</span>
+                      <strong className="text-xs text-slate-800 truncate block">
+                        {formData.dataNascimento
+                          ? new Date(formData.dataNascimento + 'T00:00:00').toLocaleDateString('pt-BR')
+                          : 'Não informada'}
+                      </strong>
+                    </div>
+                    {formData.dataNascimento && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyField('nascimento', new Date(formData.dataNascimento + 'T00:00:00').toLocaleDateString('pt-BR'))}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer flex-shrink-0"
+                        title="Copiar Data de Nascimento"
+                      >
+                        {copiedField === 'nascimento' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
                   </div>
 
-                  <div className="bg-white p-3 rounded-xl border border-orange-200/80 shadow-2xs">
-                    <span className="text-[10px] text-slate-400 block font-medium">Parcela Máx. (30%)</span>
-                    <strong className="text-sm font-bold text-brand-600">
-                      R$ {parcelaMaxima.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês
-                    </strong>
+                  {/* Telefone */}
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between shadow-2xs">
+                    <div className="min-w-0 pr-1">
+                      <span className="text-[10px] text-slate-400 block font-medium">Celular</span>
+                      <strong className="text-xs text-slate-800 font-mono truncate block">
+                        {formData.telefone || 'Não informado'}
+                      </strong>
+                    </div>
+                    {formData.telefone && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyField('telefone', formData.telefone)}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer flex-shrink-0"
+                        title="Copiar Telefone"
+                      >
+                        {copiedField === 'telefone' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
                   </div>
 
-                  <div className="bg-white p-3 rounded-xl border border-orange-200/80 shadow-2xs">
-                    <span className="text-[10px] text-slate-400 block font-medium">Poder de Compra</span>
-                    <strong className="text-sm font-bold text-slate-900">
-                      R$ {poderCompraTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </strong>
+                  {/* Renda Bruta */}
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between shadow-2xs">
+                    <div className="min-w-0 pr-1">
+                      <span className="text-[10px] text-slate-400 block font-medium">Renda Mensal</span>
+                      <strong className="text-xs text-slate-800 truncate block">
+                        R$ {renda.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </strong>
+                    </div>
+                    {renda > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyField('renda', renda.toFixed(2).replace('.', ','))}
+                        className="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer flex-shrink-0"
+                        title="Copiar Renda"
+                      >
+                        {copiedField === 'renda' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -333,7 +415,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     type="text"
                     required
                     value={formData.telefone}
-                    onChange={(e) => setFormData({ ...formData, telefone: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, telefone: formatPhoneBR(e.target.value) })}
+                    placeholder="(11) 98765-4321"
+                    maxLength={15}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   />
                 </div>

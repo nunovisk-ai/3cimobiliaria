@@ -101,7 +101,7 @@ export const usersService = {
   },
 
   // 4. Admin forces password reset for a user
-  async adminSetUserPassword(userId: string, newPassword: string): Promise<boolean> {
+  async adminSetUserPassword(userId: string, newPassword: string, setPrimeiroAcesso: boolean = false): Promise<boolean> {
     const { data, error } = await supabase.rpc('admin_set_user_password', {
       p_user_id: userId,
       p_new_password: newPassword,
@@ -112,7 +112,25 @@ export const usersService = {
       throw new Error(error.message || 'Erro ao redefinir senha');
     }
 
+    if (setPrimeiroAcesso) {
+      await supabase.from('profiles').update({ primeiro_acesso: true }).eq('id', userId);
+    }
+
     return !!data;
+  },
+
+  // 4.1 Admin directly resets or toggles primeiro_acesso flag
+  async toggleUserPrimeiroAcesso(userId: string, primeiroAcesso: boolean): Promise<boolean> {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ primeiro_acesso: primeiroAcesso })
+      .eq('id', userId);
+
+    if (error) {
+      console.error('Error toggling primeiro_acesso:', error);
+      throw new Error(error.message || 'Erro ao atualizar primeiro acesso');
+    }
+    return true;
   },
 
   // 5. User changes their own password (e.g. first access or self reset)

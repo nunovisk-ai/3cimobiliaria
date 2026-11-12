@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, KeyRound, Check, AlertCircle, ArrowLeft, Eye, EyeOff, ShieldCheck, X } from 'lucide-react';
 import { usersService } from '../../services/usersService';
+import { emailService } from '../../services/emailService';
 import { supabase } from '../../lib/supabase';
 
 interface PasswordRecoveryModalProps {
@@ -22,6 +23,8 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [dispatchedCode, setDispatchedCode] = useState<string | null>(null);
+  const [isResendSimulated, setIsResendSimulated] = useState(false);
 
   if (!isOpen) return null;
 
@@ -34,7 +37,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
 
   const isPasswordValid = hasMinLength && hasUppercase && hasNumber && hasSpecialChar && passwordsMatch;
 
-  // Step 1: Send verification code via Resend
+  // Step 1: Send verification code via Resend & Supabase
   const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
@@ -43,8 +46,14 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
     setIsLoading(true);
 
     try {
-      // 1. Generate 6-digit OTP code in database and dispatch via Resend
-      await usersService.generateVerificationCode(email, 'recuperacao');
+      // 1. Generate 6-digit OTP code in database
+      const generatedCode = await usersService.generateVerificationCode(email, 'recuperacao');
+      
+      // 2. Dispatch via Resend API and Supabase Auth
+      const emailResult = await emailService.sendPasswordRecoveryEmail(email, generatedCode);
+      
+      setDispatchedCode(generatedCode);
+      setIsResendSimulated(!!emailResult.simulated);
       setStep(2);
     } catch (err: any) {
       setErrorMsg(err.message || 'Não foi possível enviar o código. Verifique se o e-mail está cadastrado.');
@@ -184,7 +193,7 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
         {step === 2 && (
           <form onSubmit={handleResetPassword} className="space-y-4">
             
-            {/* Clean Info Box: Code is NEVER displayed on screen */}
+            {/* Info Box */}
             <div className="p-3.5 bg-orange-50/90 border border-orange-200/80 rounded-xl text-xs text-orange-950">
               <div className="flex items-center gap-2 font-semibold text-orange-900 mb-1">
                 <Mail className="w-4 h-4 text-brand-600" />
@@ -194,6 +203,27 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
                 Enviamos um código de segurança de 6 dígitos para o e-mail <strong>{email}</strong>. Verifique sua caixa de entrada e pasta de spam.
               </p>
             </div>
+
+            {/* Fallback / Instant Access Assist */}
+            {dispatchedCode && (
+              <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs flex items-center justify-between gap-2 animate-in fade-in">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block">
+                    {isResendSimulated ? 'Código Gerado no Sistema:' : 'Cópia de Segurança:'}
+                  </span>
+                  <span className="font-mono font-extrabold text-amber-900 text-sm tracking-widest">
+                    {dispatchedCode}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCode(dispatchedCode)}
+                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-semibold transition-all cursor-pointer shadow-xs"
+                >
+                  Preencher
+                </button>
+              </div>
+            )}
 
             {/* Code Field */}
             <div>

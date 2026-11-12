@@ -3,6 +3,7 @@ import { Lead, FunnelStage } from '../../types';
 import { Empreendimento } from '../../services/empreendimentosService';
 import { X, UserPlus } from 'lucide-react';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
+import { formatPhoneBR } from '../../utils/phoneMask';
 import { CurrencyInput } from '../common/CurrencyInput';
 
 interface NewLeadModalProps {
@@ -19,7 +20,7 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
   onCreate
 }) => {
   const [nome, setNome] = useState(initialValues?.nome || '');
-  const [telefone, setTelefone] = useState(initialValues?.telefone || '');
+  const [telefone, setTelefone] = useState(initialValues?.telefone ? formatPhoneBR(initialValues.telefone) : '');
   const [email, setEmail] = useState(initialValues?.email || '');
   const [cpf, setCpf] = useState(initialValues?.cpf || '');
   const [rendaMensal, setRendaMensal] = useState<number | ''>(initialValues?.rendaMensal || '');
@@ -117,8 +118,9 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
                 type="text"
                 required
                 value={telefone}
-                onChange={(e) => setTelefone(e.target.value)}
+                onChange={(e) => setTelefone(formatPhoneBR(e.target.value))}
                 placeholder="(11) 98765-4321"
+                maxLength={15}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
               />
             </div>

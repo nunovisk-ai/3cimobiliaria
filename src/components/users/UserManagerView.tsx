@@ -12,10 +12,12 @@ import {
   Phone, 
   RefreshCw,
   AlertCircle,
+  RotateCcw,
   X
 } from 'lucide-react';
 import { UserProfile, UserRole } from '../../types';
 import { usersService } from '../../services/usersService';
+import { formatPhoneBR } from '../../utils/phoneMask';
 
 export const UserManagerView: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -50,6 +52,7 @@ export const UserManagerView: React.FC = () => {
 
   // Form state for Reset Password
   const [resetPasswordValue, setResetPasswordValue] = useState('');
+  const [resetPrimeiroAcesso, setResetPrimeiroAcesso] = useState(true);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -215,15 +218,45 @@ export const UserManagerView: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      await usersService.adminSetUserPassword(passwordResetUser.id, resetPasswordValue);
-      setSuccessMsg(`Nova senha salva para ${passwordResetUser.name}!`);
+      await usersService.adminSetUserPassword(passwordResetUser.id, resetPasswordValue, resetPrimeiroAcesso);
+      setSuccessMsg(`Nova senha salva para ${passwordResetUser.name}! ${resetPrimeiroAcesso ? '(Primeiro Acesso exigido no próximo login)' : ''}`);
       setPasswordResetUser(null);
       setResetPasswordValue('');
+      await loadUsers();
       setTimeout(() => setSuccessMsg(null), 4000);
     } catch (err: any) {
       setErrorMsg(err.message || 'Falha ao redefinir senha.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Quick 1-click reset to default password (3cImob@2026) and force First Access
+  const handleQuickResetDefault = async (u: UserProfile) => {
+    if (!window.confirm(`Deseja restaurar a senha de "${u.name}" para a senha padrão "3cImob@2026" e exigir Primeiro Acesso no próximo login?`)) {
+      return;
+    }
+    setErrorMsg(null);
+    try {
+      await usersService.adminSetUserPassword(u.id, '3cImob@2026', true);
+      setSuccessMsg(`Senha de ${u.name} restaurada para "3cImob@2026" com Primeiro Acesso ativado!`);
+      await loadUsers();
+      setTimeout(() => setSuccessMsg(null), 5000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao restaurar senha padrão.');
+    }
+  };
+
+  // Direct toggle for Primeiro Acesso status
+  const handleTogglePrimeiroAcesso = async (u: UserProfile) => {
+    const nextVal = !u.primeiroAcesso;
+    try {
+      await usersService.toggleUserPrimeiroAcesso(u.id, nextVal);
+      setSuccessMsg(`Primeiro acesso de ${u.name} marcado como ${nextVal ? 'Pendente (exigirá troca no login)' : 'Concluído'}!`);
+      await loadUsers();
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro ao alterar status de primeiro acesso.');
     }
   };
 
@@ -461,22 +494,30 @@ export const UserManagerView: React.FC = () => {
 
                       {/* First Access */}
                       <td className="py-3 px-4">
-                        {u.primeiroAcesso ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
-                            Pendente
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Concluído
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePrimeiroAcesso(u)}
+                          title={u.primeiroAcesso ? 'Clique para marcar como Concluído' : 'Clique para exigir troca de senha no próximo login'}
+                          className="focus:outline-none cursor-pointer text-left"
+                        >
+                          {u.primeiroAcesso ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 transition-colors">
+                              Pendente (Exige Troca)
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 hover:text-emerald-700 font-medium">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Concluído
+                            </span>
+                          )}
+                        </button>
                       </td>
 
                       {/* Actions */}
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+                            type="button"
                             onClick={() => openEditModal(u)}
                             title="Editar Dados e Permissões"
                             className="p-1.5 text-slate-500 hover:text-brand-600 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
@@ -484,11 +525,21 @@ export const UserManagerView: React.FC = () => {
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
+                            type="button"
+                            onClick={() => handleQuickResetDefault(u)}
+                            title="Restaurar Senha Padrão (3cImob@2026) e Primeiro Acesso"
+                            className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => {
                               setPasswordResetUser(u);
                               setResetPasswordValue('');
+                              setResetPrimeiroAcesso(true);
                             }}
-                            title="Redefinir Senha do Usuário"
+                            title="Definir Senha Manualmente"
                             className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                           >
                             <KeyRound className="w-4 h-4" />
@@ -564,8 +615,9 @@ export const UserManagerView: React.FC = () => {
                   <input
                     type="text"
                     value={newTelefone}
-                    onChange={(e) => setNewTelefone(e.target.value)}
+                    onChange={(e) => setNewTelefone(formatPhoneBR(e.target.value))}
                     placeholder="(11) 98765-4321"
+                    maxLength={15}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                   />
                 </div>
@@ -689,8 +741,10 @@ export const UserManagerView: React.FC = () => {
                   <input
                     type="text"
                     value={editTelefone}
-                    onChange={(e) => setEditTelefone(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800"
+                    onChange={(e) => setEditTelefone(formatPhoneBR(e.target.value))}
+                    placeholder="(11) 98765-4321"
+                    maxLength={15}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   />
                 </div>
                 <div>
@@ -790,22 +844,51 @@ export const UserManagerView: React.FC = () => {
                   onChange={(e) => setResetPasswordValue(e.target.value)}
                   placeholder="Nova senha (ex: 3cImob@2026)"
                   required
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                 />
+              </div>
+
+              {/* Quick default password button */}
+              <div className="flex items-center justify-between text-xs pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetPasswordValue('3cImob@2026');
+                    setResetPrimeiroAcesso(true);
+                  }}
+                  className="text-[11px] text-brand-600 hover:text-brand-700 font-semibold cursor-pointer underline hover:no-underline"
+                >
+                  Usar Senha Padrão (3cImob@2026)
+                </button>
+              </div>
+
+              {/* Force first access checkbox */}
+              <div className="p-2.5 bg-amber-50/80 border border-amber-200/90 rounded-xl text-xs mt-2">
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={resetPrimeiroAcesso}
+                    onChange={(e) => setResetPrimeiroAcesso(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded text-brand-500 border-slate-300 focus:ring-brand-400 cursor-pointer"
+                  />
+                  <span className="text-slate-700 text-[11px] leading-tight">
+                    <strong>Exigir Primeiro Acesso:</strong> O usuário deverá cadastrar uma nova senha no próximo login.
+                  </span>
+                </label>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3">
                 <button
                   type="button"
                   onClick={() => setPasswordResetUser(null)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl text-xs"
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || !resetPasswordValue}
-                  className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs shadow-md"
+                  className="px-4 py-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-xl text-xs shadow-md transition-all cursor-pointer"
                 >
                   {isSubmitting ? 'Salvando...' : 'Gravar Nova Senha'}
                 </button>
