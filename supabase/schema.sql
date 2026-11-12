@@ -189,3 +189,127 @@ CREATE TRIGGER update_leads_updated_at
 CREATE TRIGGER update_visitas_updated_at
     BEFORE UPDATE ON public.visitas
     FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
+
+-- ==============================================================================
+-- FUNÇÕES DE GESTÃO DE USUÁRIOS E SEGURANÇA (ADMIN RPCs)
+-- ==============================================================================
+
+-- 1. Criação de novo usuário do CRM com senha e perfil sincronizados
+CREATE OR REPLACE FUNCTION public.admin_create_crm_user(
+    p_nome TEXT,
+    p_email TEXT,
+    p_password TEXT DEFAULT '3cImob@2026',
+    p_role TEXT DEFAULT 'corretor',
+    p_telefone TEXT DEFAULT NULL,
+    p_creci TEXT DEFAULT NULL,
+    p_primeiro_acesso BOOLEAN DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    new_user_id UUID;
+    encrypted_pw TEXT;
+    result jsonb;
+BEGIN
+    encrypted_pw := crypt(p_password, gen_salt('bf'));
+    new_user_id := gen_random_uuid();
+
+    -- Inserir em auth.users (já confirmado para login imediato)
+    INSERT INTO auth.users (
+        instance_id,
+        id,
+        aud,
+        role,
+        email,
+        encrypted_password,
+        email_confirmed_at,
+        confirmed_at,
+        raw_app_meta_data,
+        raw_user_meta_data,
+        created_at,
+        updated_at
+    ) VALUES (
+        '00000000-0000-0000-0000-000000000000',
+        new_user_id,
+        'authenticated',
+        'authenticated',
+        lower(trim(p_email)),
+        encrypted_pw,
+        now(),
+        now(),
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('nome', p_nome, 'role', p_role, 'cargo', p_role),
+        now(),
+        now()
+    );
+
+    -- Inserir em auth.identities com provider_id preenchido
+    INSERT INTO auth.identities (
+        id,
+        provider_id,
+        user_id,
+        identity_data,
+        provider,
+        last_sign_in_at,
+        created_at,
+        updated_at
+    ) VALUES (
+        gen_random_uuid(),
+        new_user_id::text,
+        new_user_id,
+        jsonb_build_object('sub', new_user_id::text, 'email', lower(trim(p_email))),
+        'email',
+        now(),
+        now(),
+        now()
+    );
+
+    -- Inserir ou atualizar na tabela de perfis
+    INSERT INTO public.profiles (
+        id,
+        nome,
+        email,
+        telefone,
+        creci,
+        cargo,
+        role,
+        status,
+        primeiro_acesso,
+        created_at,
+        updated_at
+    ) VALUES (
+        new_user_id,
+        p_nome,
+        lower(trim(p_email)),
+        p_telefone,
+        p_creci,
+        p_role,
+        p_role,
+        'ativo',
+        p_primeiro_acesso,
+        now(),
+        now()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        nome = EXCLUDED.nome,
+        cargo = EXCLUDED.cargo,
+        role = EXCLUDED.role,
+        primeiro_acesso = EXCLUDED.primeiro_acesso,
+        status = 'ativo';
+
+    result := jsonb_build_object(
+        'id', new_user_id,
+        'nome', p_nome,
+        'email', lower(trim(p_email)),
+        'role', p_role,
+        'status', 'ativo',
+        'primeiro_acesso', p_primeiro_acesso
+    );
+
+    RETURN result;
+END;
+$$;
+
