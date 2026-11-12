@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lead, FunnelStage, WhatsAppMessage, WhatsAppInstance } from '../../types';
-import { whatsappService, formatWhatsAppTimestamp, isValidContactName } from '../../services/whatsappService';
+import { whatsappService, formatWhatsAppTimestamp, isValidContactName, extractLeadInfoFromText, extractNameFromMessageText } from '../../services/whatsappService';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
 import { CurrencyInput } from '../common/CurrencyInput';
 import { LinkifiedText } from '../../utils/linkify';
@@ -712,6 +712,90 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const unlinkedContact = isConnected ? (unlinkedContacts.find(c => c.id === selectedLeadId) || null) : null;
   const isUnlinked = Boolean(unlinkedContact && !selectedLead);
 
+  const [unlinkedEditNome, setUnlinkedEditNome] = useState('');
+  const [unlinkedEditTelefone, setUnlinkedEditTelefone] = useState('');
+  const [isSavingUnlinked, setIsSavingUnlinked] = useState(false);
+  const [unlinkedSavedSuccess, setUnlinkedSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    if (unlinkedContact) {
+      setUnlinkedEditNome(isValidContactName(unlinkedContact.nome) ? unlinkedContact.nome : '');
+      setUnlinkedEditTelefone(unlinkedContact.telefone || '');
+      setUnlinkedSavedSuccess(false);
+    }
+  }, [unlinkedContact?.id, unlinkedContact?.nome, unlinkedContact?.telefone]);
+
+  const handleSaveUnlinkedContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!unlinkedContact) return;
+    setIsSavingUnlinked(true);
+    try {
+      const cleanName = unlinkedEditNome.trim();
+      const cleanPhone = unlinkedEditTelefone.trim();
+      let formattedPhone = unlinkedContact.telefone;
+      let rawPhone = unlinkedContact.rawPhone;
+
+      if (cleanName && isValidContactName(cleanName)) {
+        whatsappService.registerContactName(session, unlinkedContact.remoteJid, cleanName);
+        for (const j of unlinkedContact.allJids || []) {
+          whatsappService.registerContactName(session, j, cleanName);
+        }
+      }
+
+      if (cleanPhone) {
+        const digits = cleanPhone.replace(/\D/g, '');
+        if (digits.length >= 8) {
+          const mappedJid = whatsappService.registerLidMapping(session, unlinkedContact.remoteJid, cleanPhone);
+          formattedPhone = formatPhoneBR(cleanPhone);
+          rawPhone = digits;
+          if (mappedJid) {
+            whatsappService.fetchProfilePicture(session, mappedJid, true).then(url => {
+              if (url) applyFetchedPictures({ [unlinkedContact.remoteJid]: url, [mappedJid]: url });
+            }).catch(() => {});
+          }
+        }
+      }
+
+      const finalName = cleanName && isValidContactName(cleanName)
+        ? cleanName
+        : (formattedPhone || unlinkedContact.nome || 'Novo Contato');
+
+      setUnlinkedContacts(prev =>
+        prev.map(c =>
+          c.id === unlinkedContact.id
+            ? {
+                ...c,
+                nome: finalName,
+                telefone: formattedPhone,
+                rawPhone: rawPhone,
+              }
+            : c
+        )
+      );
+
+      setRealChatMap(prev => {
+        if (!prev.has(unlinkedContact.id)) return prev;
+        const next = new Map(prev);
+        const cur = next.get(unlinkedContact.id);
+        if (cur) {
+          next.set(unlinkedContact.id, {
+            ...cur,
+            name: finalName,
+            pushName: finalName,
+            phone: formattedPhone,
+            rawPhone: rawPhone,
+          });
+        }
+        return next;
+      });
+
+      setUnlinkedSavedSuccess(true);
+      setTimeout(() => setUnlinkedSavedSuccess(false), 3000);
+    } finally {
+      setIsSavingUnlinked(false);
+    }
+  };
+
   const findPicForJids = (picMap: Record<string, string>, jids: string[], rawPhone?: string): string | undefined => {
     for (const j of jids) {
       if (j && picMap[j]) return picMap[j];
@@ -951,7 +1035,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             id: chat.remoteJid,
             remoteJid: chat.remoteJid,
             allJids: chat.allJids && chat.allJids.length > 0 ? chat.allJids : [chat.remoteJid],
-            nome: chat.pushName || chat.name || chat.phone || 'Contato WhatsApp',
+            nome: (isValidContactName(chat.pushName) ? chat.pushName : null) || (isValidContactName(chat.name) ? chat.name : null) || chat.phone || 'Novo Contato',
             telefone: chat.phone,
             rawPhone: chat.rawPhone,
             mensagem: finalLastMessage || 'Conversa iniciada via WhatsApp',
@@ -1179,14 +1263,58 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         }
 
         if (isContactUnlinked) {
-          const discoveredName = [...msgs].reverse().find(m => !m.fromMe && isValidContactName(m.senderName))?.senderName;
+          let discoveredName = [...msgs].reverse().find(m => !m.fromMe && isValidContactName(m.senderName))?.senderName;
+          let discoveredPhone: string | null = null;
+
+          for (const m of msgs) {
+            if (m.text) {
+              const leadInfo = extractLeadInfoFromText(m.text);
+              if (leadInfo) {
+                if (leadInfo.name && isValidContactName(leadInfo.name)) {
+                  discoveredName = leadInfo.name;
+                }
+                if (leadInfo.phone) {
+                  discoveredPhone = leadInfo.phone;
+                }
+              }
+              if (m.fromMe && !discoveredName) {
+                const vocative = extractNameFromMessageText(m.text);
+                if (vocative && isValidContactName(vocative)) {
+                  discoveredName = vocative;
+                }
+              }
+            }
+          }
+
+          if (discoveredPhone) {
+            const mappedJid = whatsappService.registerLidMapping(session, leadIdOrJid, discoveredPhone);
+            if (mappedJid) {
+              whatsappService.fetchProfilePicture(session, mappedJid, true).then(url => {
+                if (url) applyFetchedPictures({ [leadIdOrJid]: url, [mappedJid]: url });
+              }).catch(() => {});
+            }
+          }
+
           if (discoveredName) {
+            whatsappService.registerContactName(session, leadIdOrJid, discoveredName);
+          }
+
+          if (discoveredName || discoveredPhone) {
             setUnlinkedContacts(prev =>
-              prev.map(c =>
-                c.id === leadIdOrJid && !isValidContactName(c.nome)
-                  ? { ...c, nome: discoveredName }
-                  : c
-              )
+              prev.map(c => {
+                if (c.id === leadIdOrJid) {
+                  const updatedName = discoveredName && isValidContactName(discoveredName) ? discoveredName : c.nome;
+                  const updatedPhone = discoveredPhone ? formatPhoneBR(discoveredPhone) : c.telefone;
+                  const updatedRaw = discoveredPhone ? discoveredPhone.replace(/\D/g, '') : c.rawPhone;
+                  return {
+                    ...c,
+                    nome: (!isValidContactName(c.nome) && updatedName) ? updatedName : c.nome,
+                    telefone: c.telefone || updatedPhone,
+                    rawPhone: c.rawPhone || updatedRaw
+                  };
+                }
+                return c;
+              })
             );
           }
         }
@@ -2004,9 +2132,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                               onError={() => handleAvatarError(contact.profilePicUrl!, [contact.remoteJid, ...(contact.allJids || [])])}
                               className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
                             />
-                          ) : (
+                          ) : isValidContactName(contact.nome) ? (
                             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
                               {contact.nome.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'WA'}
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-400 border border-slate-200/80 flex items-center justify-center shadow-xs flex-shrink-0">
+                              <User className="w-5 h-5 text-slate-400" />
                             </div>
                           )}
                         </div>
@@ -2087,9 +2219,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                             onError={() => handleAvatarError(leadPic, leadJids)}
                             className="w-10 h-10 rounded-2xl object-cover shadow-xs flex-shrink-0"
                           />
-                        ) : (
+                        ) : isValidContactName(lead.nome) ? (
                           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-700 text-white flex items-center justify-center font-bold text-xs shadow-xs flex-shrink-0">
                             {lead.nome.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'LD'}
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded-2xl bg-slate-100 text-slate-400 border border-slate-200/80 flex items-center justify-center shadow-xs flex-shrink-0">
+                            <User className="w-5 h-5 text-slate-400" />
                           </div>
                         )}
                       </div>
@@ -2183,13 +2319,20 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         />
                       );
                     }
+                    if (isValidContactName(headerName)) {
+                      return (
+                        <div className={`w-9 h-9 rounded-2xl text-white flex items-center justify-center font-bold text-xs shadow-xs ${
+                          isUnlinked 
+                            ? 'bg-gradient-to-tr from-amber-600 to-orange-500' 
+                            : 'bg-gradient-to-tr from-brand-600 to-amber-500'
+                        }`}>
+                          {headerName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'WA'}
+                        </div>
+                      );
+                    }
                     return (
-                      <div className={`w-9 h-9 rounded-2xl text-white flex items-center justify-center font-bold text-xs shadow-xs ${
-                        isUnlinked 
-                          ? 'bg-gradient-to-tr from-amber-600 to-orange-500' 
-                          : 'bg-gradient-to-tr from-brand-600 to-amber-500'
-                      }`}>
-                        {headerName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || 'WA'}
+                      <div className="w-9 h-9 rounded-2xl bg-slate-100 text-slate-400 border border-slate-200/80 flex items-center justify-center shadow-xs">
+                        <User className="w-4 h-4 text-slate-400" />
                       </div>
                     );
                   })()}
@@ -2213,7 +2356,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500 flex items-center gap-1.5 truncate">
-                    <span>{isUnlinked ? unlinkedContact!.telefone : selectedLead!.telefone}</span>
+                    <span>{isUnlinked ? (unlinkedContact!.telefone || 'Número privado (LID WhatsApp)') : selectedLead!.telefone}</span>
                     {selectedLead?.empreendimentoInteresse && (
                       <>
                         <span>•</span>
@@ -2616,30 +2759,74 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                   </p>
                 </div>
 
-                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5 text-xs">
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Nome:</span>
-                    <strong className="text-slate-900 font-bold text-sm">{unlinkedContact!.nome}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Telefone:</span>
-                    <span className="text-slate-800 font-medium">
-                      {unlinkedContact!.telefone || 'Identificando número...'}
+                <form onSubmit={handleSaveUnlinkedContact} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-brand-600" />
+                      Identificação do Contato
                     </span>
+                    {unlinkedSavedSuccess && (
+                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Salvo!
+                      </span>
+                    )}
                   </div>
-                </div>
+
+                  <div>
+                    <label className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">
+                      Nome do Contato
+                    </label>
+                    <input
+                      type="text"
+                      value={unlinkedEditNome}
+                      onChange={(e) => setUnlinkedEditNome(e.target.value)}
+                      placeholder="Ex: Dayane, Renata, Joelson..."
+                      className="w-full p-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-900 text-xs font-medium"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-1">
+                      Telefone / WhatsApp
+                    </label>
+                    <input
+                      type="text"
+                      value={unlinkedEditTelefone}
+                      onChange={(e) => setUnlinkedEditTelefone(formatPhoneBR(e.target.value))}
+                      placeholder="(11) 98765-4321"
+                      maxLength={15}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-900 text-xs font-medium"
+                    />
+                    {!unlinkedContact!.telefone && (
+                      <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+                        🔒 Número protegido pelo WhatsApp (LID). Digite o número real para mapear.
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSavingUnlinked}
+                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSavingUnlinked ? 'Salvando...' : 'Salvar Dados do Contato'}</span>
+                  </button>
+                </form>
 
                 <button
                   type="button"
                   onClick={() => onOpenCreateLead?.({
-                    nome: isValidContactName(unlinkedContact!.nome) ? unlinkedContact!.nome : '',
-                    telefone: unlinkedContact!.telefone || '',
+                    nome: unlinkedEditNome.trim() && isValidContactName(unlinkedEditNome)
+                      ? unlinkedEditNome.trim()
+                      : (isValidContactName(unlinkedContact!.nome) ? unlinkedContact!.nome : ''),
+                    telefone: unlinkedEditTelefone.trim() || unlinkedContact!.telefone || '',
                     sourceLidJid: unlinkedContact!.remoteJid.includes('@lid') ? unlinkedContact!.remoteJid : undefined,
                   })}
                   className="w-full py-3 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
                 >
                   <UserPlus className="w-4 h-4" />
-                  <span>Gerar Lead</span>
+                  <span>Gerar Lead no Funil</span>
                 </button>
               </div>
             ) : selectedLead ? (

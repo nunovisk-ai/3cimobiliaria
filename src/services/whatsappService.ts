@@ -86,11 +86,68 @@ const INITIAL_LID_TO_PHONE: Record<string, string> = {
   "87102071013628@lid": "5511959415319@s.whatsapp.net",
   "279070046703684@lid": "5511913660034@s.whatsapp.net",
   "191796764274812@lid": "5511996502507@s.whatsapp.net",
-  "264007730593934@lid": "5511932143211@s.whatsapp.net"
+  "264007730593934@lid": "5511932143211@s.whatsapp.net",
+  "276870906020041@lid": "5511981801062@s.whatsapp.net",
+  "148846436991129@lid": "553175736739@s.whatsapp.net",
+  "29236278591494@lid": "5511962257925@s.whatsapp.net",
+  "84104234184806@lid": "5511985577411@s.whatsapp.net",
+  "47012812726521@lid": "5511982544867@s.whatsapp.net",
+  "239144634695704@lid": "5511925111371@s.whatsapp.net",
+  "267984568344768@lid": "5511958577132@s.whatsapp.net",
+  "113644985671778@lid": "5511964358761@s.whatsapp.net"
+};
+
+// Pre-seeded LID -> Human Contact Name mappings learned from messages & vocatives
+const INITIAL_LID_TO_NAME: Record<string, string> = {
+  "47012812726521@lid": "Dayane",
+  "267984568344768@lid": "Giovanna L",
+  "113644985671778@lid": "Daniela",
+  "29236278591494@lid": "Jair Neto",
+  "84104234184806@lid": "Allan",
+  "242468285096128@lid": "Gabi",
+  "55684402004051@lid": "Liria",
+  "201193951387825@lid": "Charlene",
+  "161997693931751@lid": "Adnilson",
+  "74977982316712@lid": "Anderson",
+  "279654011289756@lid": "Lucas",
+  "31228774338576@lid": "Felipe",
+  "202503446597803@lid": "Amanda",
+  "95919538221205@lid": "Marii",
+  "264454138790045@lid": "Pedro",
+  "107542424359119@lid": "Rodolfo",
+  "121251892850707@lid": "Noel",
+  "28922813132862@lid": "Daniela",
+  "119009416630272@lid": "Natália",
+  "152643238424714@lid": "Giovani",
+  "271484916396039@lid": "Eunice",
+  "33832111702233@lid": "Creusa",
+  "150603045060833@lid": "Nicoly",
+  "212128535437547@lid": "Maria",
+  "249984360419467@lid": "Mih",
+  "32392676946172@lid": "Karina",
+  "48812454367266@lid": "Márcia",
+  "194931972952162@lid": "João",
+  "100978976108761@lid": "Diogo",
+  "19945928839192@lid": "Wolney",
+  "105879970013296@lid": "Geovana",
+  "271463441547336@lid": "Kayky",
+  "203036056129705@lid": "Lucas",
+  "128882585779@lid": "Vinicius",
+  "81896621007061@lid": "Rafael",
+  "33324785520872@lid": "Flavio",
+  "183515614306364@lid": "Joelson",
+  "257345934385284@lid": "Cássia",
+  "161181549461757@lid": "Sabrina",
+  "158114942820480@lid": "Marina",
+  "57024297595108@lid": "Pedro",
+  "112558358945865@lid": "Mari",
+  "24511663579143@lid": "Renata",
+  "203830692171885@lid": "Miriam",
+  "58772902924334@lid": "Isabeli"
 };
 
 const lidMemoryCache = new Map<string, string>(Object.entries(INITIAL_LID_TO_PHONE));
-const nameMemoryCache = new Map<string, string>();
+const nameMemoryCache = new Map<string, string>(Object.entries(INITIAL_LID_TO_NAME));
 const picMemoryCache = new Map<string, { url: string | null; fetchedAt: number }>();
 const brokenPicUrls = new Set<string>();
 const picRetryCooldown = new Map<string, number>();
@@ -129,7 +186,9 @@ function extractMessageStatus(m: any): 'sent' | 'delivered' | 'read' | 'deleted'
 
 const INVALID_CONTACT_NAMES = new Set([
   'você', 'voce', '3c vendedor', 'contato whatsapp', 'contato do whatsapp',
-  'whatsapp', 'desconhecido', 'unknown', 'null', 'undefined', 'sem nome'
+  'whatsapp', 'desconhecido', 'unknown', 'null', 'undefined', 'sem nome',
+  'corretor gabriel pereira', 'gabriel pereira', 'corretor gabriel',
+  'corretor pereira', 'corretor', 'novo contato', 'novo lead'
 ]);
 
 export function isValidContactName(name?: string | null): boolean {
@@ -251,21 +310,62 @@ const IGNORED_SALUTATION_WORDS = new Set([
   'estou', 'estava', 'sou', 'tenho', 'temos', 'podemos', 'pode', 'poderia',
   'posso', 'claro', 'certo', 'perfeito', 'beleza', 'combinado', 'passando',
   'enviando', 'mandando', 'saber', 'qual', 'quando', 'onde', 'senhor', 'senhora',
-  'cliente', 'parceiro', 'corretor', 'grupo', 'equipe', '3c', 'atendimento'
+  'cliente', 'parceiro', 'corretor', 'grupo', 'equipe', '3c', 'atendimento',
+  'peco', 'peço', 'favor', 'desculpe', 'desculpa', 'mensagem', 'prezado', 'prezada',
+  'imovel', 'imóvel', 'office', 'renda', 'cotista', 'valor', 'regiao', 'região'
 ]);
 
-function extractNameFromMessageText(text?: string | null, fromMe?: boolean): string | null {
+export function extractLeadInfoFromText(text?: string | null): { name?: string; phone?: string } | null {
+  if (!text || typeof text !== 'string') return null;
+  let name: string | undefined = undefined;
+  let phone: string | undefined = undefined;
+
+  // Name patterns: "Nome: Dayane", "Cliente: Dayane", "Lead: Dayane", "*Nome:* Dayane"
+  const nameMatch = text.match(/(?:^|\n|\r|\*)\s*(?:nome|cliente|lead|proponente)\s*[:=-]\s*([A-Za-zÀ-ÿ\s.'-]{2,35})/i);
+  if (nameMatch && nameMatch[1]) {
+    const rawCandidate = nameMatch[1].trim().split('\n')[0].replace(/[*_~]/g, '').trim();
+    const firstWord = normalizeWord(rawCandidate.split(/\s+/)[0]);
+    if (!IGNORED_SALUTATION_WORDS.has(firstWord) && isValidContactName(rawCandidate)) {
+      name = rawCandidate
+        .split(/\s+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+    }
+  }
+
+  // Phone patterns: "Telefone: (11) 98254-4867", "Whats: 11982544867", "Celular: (11) 98254-4867"
+  const phoneMatch = text.match(/(?:^|\n|\r|\*)\s*(?:telefone|tel|celular|whats|whatsapp|contato)\s*[:=-]\s*([0-9()\s+-]{8,22})/i);
+  if (phoneMatch && phoneMatch[1]) {
+    const digits = phoneMatch[1].replace(/\D/g, '');
+    if (digits.length >= 8 && digits.length <= 13) {
+      phone = digits;
+    }
+  }
+
+  if (name || phone) {
+    return { name, phone };
+  }
+  return null;
+}
+
+export function extractNameFromMessageText(text?: string | null, fromMe?: boolean): string | null {
   if (!text || typeof text !== 'string') return null;
   const trimmed = text.trim();
   if (!trimmed) return null;
 
-  // 1. Business / multi-agent prefix at start of message: "*Nome da Empresa*:"
+  // 1. Structured "Nome: [Nome]" / "Cliente: [Nome]" in message
+  const leadInfo = extractLeadInfoFromText(trimmed);
+  if (leadInfo?.name && isValidContactName(leadInfo.name)) {
+    return leadInfo.name;
+  }
+
+  // 2. Business / multi-agent prefix at start of message: "*Nome da Empresa*:"
   const headerMatch = trimmed.match(/^\*([A-Za-zÀ-ÿ0-9\s.'&-]{2,35})\*\s*:/);
   if (headerMatch && isValidContactName(headerMatch[1])) {
     return headerMatch[1].trim();
   }
 
-  // 2. Incoming self-introduction from lead: "Meu nome é João", "Me chamo Maria", "Aqui é o Carlos"
+  // 3. Incoming self-introduction from lead: "Meu nome é João", "Me chamo Maria", "Aqui é o Carlos", "Aqui é a Miriam"
   if (!fromMe) {
     const selfIntroMatch = trimmed.match(
       /(?:meu nome\s+[eé]|me chamo|aqui\s+[eé]\s+(?:o|a)?|sou\s+(?:o|a))\s+([A-ZÀ-Ÿa-zà-ÿ]{2,18}(?:\s+[A-ZÀ-Ÿa-zà-ÿ]{2,18})?)(?:\b|[.,!?])/i
@@ -282,10 +382,10 @@ function extractNameFromMessageText(text?: string | null, fromMe?: boolean): str
     }
   }
 
-  // 3. Outgoing greeting/vocative from the broker addressing the contact by name
+  // 4. Outgoing greeting/vocative from the broker addressing the contact by name
   if (fromMe) {
     const greetPrefixMatch = trimmed.match(
-      /^(?:oi|olá|ola|bom dia|boa tarde|boa noite|fala|salve|eai|e aí|opa)\s*[,!]?\s+(.+)/i
+      /^(?:oi|olá|ola|bom dia|boa tarde|boa noite|fala|salve|eai|e aí|opa)\s*[,!.]*\s+(.+)/i
     );
     if (greetPrefixMatch && greetPrefixMatch[1]) {
       const restMatch = greetPrefixMatch[1].match(
@@ -293,7 +393,7 @@ function extractNameFromMessageText(text?: string | null, fromMe?: boolean): str
       );
       if (restMatch && restMatch[1]) {
         const candidate = restMatch[1].trim();
-        if (!IGNORED_SALUTATION_WORDS.has(normalizeWord(candidate))) {
+        if (!IGNORED_SALUTATION_WORDS.has(normalizeWord(candidate)) && isValidContactName(candidate)) {
           return candidate.charAt(0).toUpperCase() + candidate.slice(1);
         }
       }
@@ -304,7 +404,16 @@ function extractNameFromMessageText(text?: string | null, fromMe?: boolean): str
     );
     if (honorificMatch && honorificMatch[1] && /^[A-ZÀ-Ÿ]/.test(honorificMatch[1])) {
       const candidate = honorificMatch[1].trim();
-      if (!IGNORED_SALUTATION_WORDS.has(normalizeWord(candidate))) {
+      if (!IGNORED_SALUTATION_WORDS.has(normalizeWord(candidate)) && isValidContactName(candidate)) {
+        return candidate.charAt(0).toUpperCase() + candidate.slice(1);
+      }
+    }
+
+    // Question vocative at end of message: "..., tudo bem Isabeli?", "..., certo Joelson?"
+    const endVocativeMatch = trimmed.match(/(?:,\s*|\s+)([A-ZÀ-Ÿ][a-zà-ÿ]{2,18})\s*[?!]+$/);
+    if (endVocativeMatch && endVocativeMatch[1]) {
+      const candidate = endVocativeMatch[1].trim();
+      if (!IGNORED_SALUTATION_WORDS.has(normalizeWord(candidate)) && isValidContactName(candidate)) {
         return candidate.charAt(0).toUpperCase() + candidate.slice(1);
       }
     }
@@ -845,7 +954,33 @@ export const whatsappService = {
       storedLids[lidJid] = targetJid;
       saveLocalCache(`3c_lid_map_${sessionName}`, storedLids);
     }
+    // Clear negative picture cache so the newly mapped phone JID can fetch profile photo immediately
+    const memPic = picMemoryCache.get(lidJid);
+    if (memPic && !memPic.url) {
+      picMemoryCache.delete(lidJid);
+    }
     return targetJid;
+  },
+
+  /**
+   * Registers a manual or discovered contact name in memory & localStorage
+   */
+  registerContactName(sessionName: string, jid: string, name: string): string | null {
+    if (!jid || !name || !isValidContactName(name)) return null;
+    const cleanName = name.trim();
+    nameMemoryCache.set(jid, cleanName);
+    const storedNames = loadLocalCache(`3c_name_cache_${sessionName}`);
+    if (storedNames[jid] !== cleanName) {
+      storedNames[jid] = cleanName;
+      saveLocalCache(`3c_name_cache_${sessionName}`, storedNames);
+    }
+    const mappedPhone = lidMemoryCache.get(jid);
+    if (mappedPhone && !nameMemoryCache.has(mappedPhone)) {
+      nameMemoryCache.set(mappedPhone, cleanName);
+      storedNames[mappedPhone] = cleanName;
+      saveLocalCache(`3c_name_cache_${sessionName}`, storedNames);
+    }
+    return cleanName;
   },
 
   /**
@@ -955,7 +1090,7 @@ export const whatsappService = {
             'apikey': EVOLUTION_API_KEY,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ number: queryJid }),
+          body: JSON.stringify({ number: queryJid, chatId: queryJid }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -1092,7 +1227,7 @@ export const whatsappService = {
                 },
               },
               page: 1,
-              offset: 30,
+              offset: 50,
             }),
             signal: controller.signal,
           });
@@ -1126,13 +1261,28 @@ export const whatsappService = {
             discoveredName = candidate;
           }
         }
-        if (!fallbackTextName && m.message) {
+        if (m.message) {
           const parsed = parseWhatsAppMessageContent(m.message);
-          if (parsed.text && !parsed.mediaType) {
-            const ext = extractNameFromMessageText(parsed.text, Boolean(m.key?.fromMe));
-            if (ext && isValidContactName(ext)) {
-              fallbackTextName = ext;
+          if (parsed.text) {
+            const leadInfo = extractLeadInfoFromText(parsed.text);
+            if (leadInfo?.phone && !mappedPhoneJid && jid.includes('@lid')) {
+              const digits = leadInfo.phone.replace(/\D/g, '');
+              const withDdi = digits.startsWith('55') ? digits : `55${digits}`;
+              mappedPhoneJid = `${withDdi}@s.whatsapp.net`;
             }
+            if (leadInfo?.name && !discoveredName) {
+              discoveredName = leadInfo.name;
+            }
+            if (!fallbackTextName && !parsed.mediaType) {
+              const ext = extractNameFromMessageText(parsed.text, Boolean(m.key?.fromMe));
+              if (ext && isValidContactName(ext)) {
+                fallbackTextName = ext;
+              }
+            }
+          }
+          if (m.message.contactMessage?.displayName && !discoveredName) {
+            const dn = m.message.contactMessage.displayName.trim();
+            if (isValidContactName(dn)) discoveredName = dn;
           }
         }
       }
@@ -1309,6 +1459,22 @@ export const whatsappService = {
 
               const parsedContent = parseWhatsAppMessageContent(m.message);
               if (!parsedContent.isReaction && parsedContent.text && !parsedContent.mediaType) {
+                const leadInfo = extractLeadInfoFromText(parsedContent.text);
+                if (leadInfo?.phone && jid?.includes('@lid')) {
+                  const digits = leadInfo.phone.replace(/\D/g, '');
+                  const withDdi = digits.startsWith('55') ? digits : `55${digits}`;
+                  const phoneJid = `${withDdi}@s.whatsapp.net`;
+                  lidMemoryCache.set(jid, phoneJid);
+                  storedLids[jid] = phoneJid;
+                  lidsUpdated = true;
+                }
+                if (leadInfo?.name) {
+                  for (const tj of targetJids) {
+                    if (!fallbackTextNamesByJid.has(tj)) {
+                      fallbackTextNamesByJid.set(tj, leadInfo.name);
+                    }
+                  }
+                }
                 const extName = extractNameFromMessageText(parsedContent.text, fromMe);
                 if (extName && isValidContactName(extName)) {
                   for (const tj of targetJids) {
@@ -1492,6 +1658,7 @@ export const whatsappService = {
 
       // Discover additional LID -> Phone mappings from chat keys, CDN profile picture filenames, or vocative greetings
       let lidsUpdatedFromChats = false;
+      let namesUpdatedFromChats = false;
       for (const c of nonGroups) {
         if (!c.remoteJid.includes('@lid')) continue;
 
@@ -1521,20 +1688,41 @@ export const whatsappService = {
           }
         }
 
-        // Check if lastMessage contains a greeting/vocative or business header name
-        if (!lidMemoryCache.has(c.remoteJid) && !nameMemoryCache.has(c.remoteJid)) {
+        // Check if lastMessage contains a greeting/vocative, lead summary, or business header name
+        if (!lidMemoryCache.has(c.remoteJid) || !nameMemoryCache.has(c.remoteJid)) {
           const msgText = getChatLastMsgText(c);
-          const extractedName = extractNameFromMessageText(msgText, Boolean(c.lastMessage?.key?.fromMe));
-          if (extractedName) {
-            const firstWord = normalizeWord(extractedName.split(/\s+/)[0]);
-            const candidates = firstNameToContactsMap.get(firstWord) || [];
-            if (candidates.length === 1) {
-              lidMemoryCache.set(c.remoteJid, candidates[0].jid);
-              storedLids[c.remoteJid] = candidates[0].jid;
-              nameMemoryCache.set(c.remoteJid, candidates[0].name);
+          if (msgText) {
+            const leadInfo = extractLeadInfoFromText(msgText);
+            if (leadInfo?.phone && !lidMemoryCache.has(c.remoteJid)) {
+              const digits = leadInfo.phone.replace(/\D/g, '');
+              const withDdi = digits.startsWith('55') ? digits : `55${digits}`;
+              const phoneJid = `${withDdi}@s.whatsapp.net`;
+              lidMemoryCache.set(c.remoteJid, phoneJid);
+              storedLids[c.remoteJid] = phoneJid;
               lidsUpdatedFromChats = true;
-            } else {
-              nameMemoryCache.set(c.remoteJid, extractedName);
+            }
+            if (leadInfo?.name && !nameMemoryCache.has(c.remoteJid)) {
+              nameMemoryCache.set(c.remoteJid, leadInfo.name);
+              storedNames[c.remoteJid] = leadInfo.name;
+              namesUpdatedFromChats = true;
+            }
+
+            const extractedName = extractNameFromMessageText(msgText, Boolean(c.lastMessage?.key?.fromMe));
+            if (extractedName && !nameMemoryCache.has(c.remoteJid)) {
+              const firstWord = normalizeWord(extractedName.split(/\s+/)[0]);
+              const candidates = firstNameToContactsMap.get(firstWord) || [];
+              if (candidates.length === 1) {
+                lidMemoryCache.set(c.remoteJid, candidates[0].jid);
+                storedLids[c.remoteJid] = candidates[0].jid;
+                nameMemoryCache.set(c.remoteJid, candidates[0].name);
+                storedNames[c.remoteJid] = candidates[0].name;
+                lidsUpdatedFromChats = true;
+                namesUpdatedFromChats = true;
+              } else {
+                nameMemoryCache.set(c.remoteJid, extractedName);
+                storedNames[c.remoteJid] = extractedName;
+                namesUpdatedFromChats = true;
+              }
             }
           }
         }
@@ -1542,6 +1730,9 @@ export const whatsappService = {
 
       if (lidsUpdatedFromChats) {
         saveLocalCache(`3c_lid_map_${sessionName}`, storedLids);
+      }
+      if (namesUpdatedFromChats) {
+        saveLocalCache(`3c_name_cache_${sessionName}`, storedNames);
       }
 
       // Unify chats by canonical phone JID (including Brazilian 8/9-digit equivalence) so LID and phone JIDs merge cleanly
@@ -1719,7 +1910,7 @@ export const whatsappService = {
 
         const hasHumanName = Boolean(resolvedName);
         if (!resolvedName) {
-          resolvedName = formattedPhone || 'Contato WhatsApp';
+          resolvedName = formattedPhone || 'Novo Contato';
         }
 
         // Resolve Profile Picture (prefer fresh valid cache & contactsMap over potentially expired chat DB URLs)
@@ -2059,6 +2250,23 @@ export const whatsappService = {
               const parsedContent = parseWhatsAppMessageContent(m.message);
               const text = parsedContent.text;
 
+              if (text) {
+                const leadInfo = extractLeadInfoFromText(text);
+                if (leadInfo?.phone && jid?.includes('@lid')) {
+                  const digits = leadInfo.phone.replace(/\D/g, '');
+                  const withDdi = digits.startsWith('55') ? digits : `55${digits}`;
+                  const phoneJid = `${withDdi}@s.whatsapp.net`;
+                  lidMemoryCache.set(jid, phoneJid);
+                  if (storedLids[jid] !== phoneJid) {
+                    storedLids[jid] = phoneJid;
+                    lidsUpdated = true;
+                  }
+                }
+                if (leadInfo?.name && !fallbackExtractedName) {
+                  fallbackExtractedName = leadInfo.name;
+                }
+              }
+
               if (!fallbackExtractedName && text && !parsedContent.mediaType) {
                 const ext = extractNameFromMessageText(text, Boolean(m.key?.fromMe));
                 if (ext && isValidContactName(ext)) {
@@ -2066,9 +2274,16 @@ export const whatsappService = {
                 }
               }
 
+              if (!fallbackExtractedName && m.message?.contactMessage?.displayName) {
+                const dn = m.message.contactMessage.displayName.trim();
+                if (isValidContactName(dn)) {
+                  fallbackExtractedName = dn;
+                }
+              }
+
               const validSender = (!m.key?.fromMe && isValidContactName(m.pushName))
                 ? m.pushName.trim()
-                : (!m.key?.fromMe && fallbackExtractedName ? fallbackExtractedName : undefined);
+                : (fallbackExtractedName ? fallbackExtractedName : undefined);
 
               if (validSender) {
                 for (const j of jidList) {
