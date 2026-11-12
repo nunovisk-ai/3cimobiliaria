@@ -137,7 +137,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
-    setIsLoading(true);
     const cleanEmail = email.trim().toLowerCase();
 
     try {
@@ -148,12 +147,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         if (error) {
-          setIsLoading(false);
           let friendlyMsg = 'E-mail ou senha incorretos.';
           if (error.message.includes('Invalid login credentials')) {
             friendlyMsg = 'E-mail ou senha incorretos. Verifique suas credenciais.';
           } else if (error.message.includes('Email not confirmed')) {
-            friendlyMsg = 'E-mail não confirmado. Verifique sua caixa de entrada.';
+            friendlyMsg = 'E-mail não confirmado. Verifique sua caixa de entrada ou confirme o e-mail no Supabase.';
+          } else if (error.message) {
+            friendlyMsg = error.message;
           }
           return { success: false, error: friendlyMsg };
         }
@@ -166,7 +166,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await supabase.auth.signOut();
             setUser(null);
             localStorage.removeItem('grupo3c_auth_user');
-            setIsLoading(false);
             return {
               success: false,
               error: 'Acesso desativado. Entre em contato com a administração do Grupo 3C.',
@@ -177,14 +176,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await usersService.recordLogin(profile.id);
         }
       } else {
-        setIsLoading(false);
         return { success: false, error: 'Supabase não está configurado ou senha ausente.' };
       }
 
-      setIsLoading(false);
       return { success: true };
     } catch (err: any) {
-      setIsLoading(false);
       return { success: false, error: err.message || 'Erro inesperado ao realizar login' };
     }
   };
