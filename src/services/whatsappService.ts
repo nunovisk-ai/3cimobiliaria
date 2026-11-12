@@ -290,6 +290,7 @@ function parseWhatsAppMessageContent(rawMsg: any): {
   mediaName?: string;
   audioDuration?: number;
   audioUrl?: string;
+  caption?: string;
   isReaction?: boolean;
 } {
   const m = unwrapWhatsAppMessage(rawMsg);
@@ -313,27 +314,30 @@ function parseWhatsAppMessageContent(rawMsg: any): {
     };
   }
   if (m.imageMessage) {
-    const cap = m.imageMessage.caption?.trim();
+    const cap = m.imageMessage.caption?.trim() || '';
     return {
       text: cap ? `📷 ${cap}` : '📷 Imagem',
       sidebarText: cap ? `📷 ${cap}` : '📷 Imagem',
       mediaType: 'image',
+      caption: cap,
     };
   }
   if (m.videoMessage) {
     const isGif = Boolean(m.videoMessage.gifPlayback);
-    const cap = m.videoMessage.caption?.trim();
+    const cap = m.videoMessage.caption?.trim() || '';
     if (isGif) {
       return {
         text: cap ? `👾 ${cap}` : '👾 GIF',
         sidebarText: cap ? `👾 ${cap}` : '👾 GIF',
         mediaType: 'gif',
+        caption: cap,
       };
     }
     return {
       text: cap ? `🎬 ${cap}` : '🎬 Vídeo',
       sidebarText: cap ? `🎬 ${cap}` : '🎬 Vídeo',
       mediaType: 'video',
+      caption: cap,
     };
   }
   if (m.ptvMessage) {
@@ -358,12 +362,13 @@ function parseWhatsAppMessageContent(rawMsg: any): {
   }
   if (m.documentMessage) {
     const fileName = m.documentMessage.fileName || m.documentMessage.title || 'Documento';
-    const cap = m.documentMessage.caption?.trim();
+    const cap = m.documentMessage.caption?.trim() || '';
     return {
       text: cap ? `📄 ${cap}` : `📄 ${fileName}`,
       sidebarText: cap ? `📄 ${cap}` : `📄 ${fileName}`,
       mediaType: 'document',
       mediaName: fileName,
+      caption: cap,
     };
   }
   if (m.contactMessage || m.contactsArrayMessage) {
@@ -1496,6 +1501,7 @@ export const whatsappService = {
                 mediaName: parsedContent.mediaName,
                 audioDuration: parsedContent.audioDuration,
                 audioUrl: parsedContent.audioUrl,
+                caption: parsedContent.caption,
                 timestamp: m.messageTimestamp ? new Date(m.messageTimestamp * 1000).toISOString() : (m.createdAt || new Date().toISOString()),
                 status: (msgStatus === 'deleted' ? 'delivered' : msgStatus) as 'sent' | 'delivered' | 'read',
               };

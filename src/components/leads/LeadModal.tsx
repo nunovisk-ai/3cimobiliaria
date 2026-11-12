@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
+import { ConfirmModal } from '../common/ConfirmModal';
 
 interface LeadModalProps {
   lead: Lead;
@@ -56,6 +57,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [cpfError, setCpfError] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'discard' | 'delete' | null>(null);
 
   // Financial simulation calculations (Caixa / MCMV standards)
   const renda = Number(formData.rendaMensal) || 0;
@@ -111,18 +113,21 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     });
   };
 
-  const handleDiscard = async () => {
-    if (confirm(`Deseja mover o lead "${lead.nome}" para a coluna de Descartados?`)) {
-      setIsSaving(true);
-      try {
-        await onSave({ statusFunil: 'descartado' });
-        onClose();
-      } catch (err) {
-        console.error('Error discarding lead:', err);
-        alert('Erro ao descartar lead.');
-      } finally {
-        setIsSaving(false);
-      }
+  const handleDiscard = () => {
+    setConfirmAction('discard');
+  };
+
+  const handleConfirmDiscard = async () => {
+    setIsSaving(true);
+    try {
+      await onSave({ statusFunil: 'descartado' });
+      setConfirmAction(null);
+      onClose();
+    } catch (err) {
+      console.error('Error discarding lead:', err);
+      alert('Erro ao descartar lead.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -139,18 +144,21 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     }
   };
 
-  const handleDelete = async () => {
-    if (confirm(`Tem certeza que deseja excluir o lead "${lead.nome}"? Esta ação removerá o registro do banco de dados.`)) {
-      setIsDeleting(true);
-      try {
-        await onDelete(lead.id);
-        onClose();
-      } catch (err) {
-        console.error('Error deleting lead:', err);
-        alert('Erro ao excluir lead.');
-      } finally {
-        setIsDeleting(false);
-      }
+  const handleDelete = () => {
+    setConfirmAction('delete');
+  };
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete(lead.id);
+      setConfirmAction(null);
+      onClose();
+    } catch (err) {
+      console.error('Error deleting lead:', err);
+      alert('Erro ao excluir lead.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -548,6 +556,32 @@ export const LeadModal: React.FC<LeadModalProps> = ({
         </div>
 
       </div>
+
+      {/* Custom Confirmation Modal: Discard Lead */}
+      <ConfirmModal
+        isOpen={confirmAction === 'discard'}
+        title="Descartar Lead"
+        description={`Deseja mover o lead "${lead.nome}" para a etapa de Descartados? O histórico e as informações do cliente continuarão salvos no CRM.`}
+        confirmText="Sim, Descartar"
+        cancelText="Voltar"
+        variant="warning"
+        isLoading={isSaving}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirmDiscard}
+      />
+
+      {/* Custom Confirmation Modal: Delete Lead */}
+      <ConfirmModal
+        isOpen={confirmAction === 'delete'}
+        title="Excluir Lead Permanentemente"
+        description={`Tem certeza que deseja excluir o lead "${lead.nome}"? Esta ação removerá o registro e todas as mensagens do banco de dados.`}
+        confirmText="Excluir Permanentemente"
+        cancelText="Cancelar"
+        variant="danger"
+        isLoading={isDeleting}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 };

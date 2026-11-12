@@ -11,6 +11,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
+import { ConfirmModal } from '../common/ConfirmModal';
 
 interface WhatsAppConnectModalProps {
   instance: WhatsAppInstance | null;
@@ -29,6 +30,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
   const [isConnecting, setIsConnecting] = useState(false);
   const [liveQrCode, setLiveQrCode] = useState<string | null>(instance?.qrcodeBase64 || null);
   const [isRefreshingQr, setIsRefreshingQr] = useState(false);
+  const [isConfirmDisconnectOpen, setIsConfirmDisconnectOpen] = useState(false);
 
   const isConnected = instance?.status === 'connected';
 
@@ -89,18 +91,21 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
   }, [isConnected, session]);
 
   // Handle Disconnect
-  const handleDisconnect = async () => {
+  const handleDisconnect = () => {
+    setIsConfirmDisconnectOpen(true);
+  };
+
+  const handleConfirmDisconnect = async () => {
     if (!instance) return;
-    if (confirm('Tem certeza que deseja desconectar sua conta de WhatsApp deste CRM?')) {
-      setIsConnecting(true);
-      try {
-        await whatsappService.disconnectInstance(instance.id, session);
-        onStatusChanged();
-      } catch (err) {
-        console.error('Erro ao desconectar WhatsApp:', err);
-      } finally {
-        setIsConnecting(false);
-      }
+    setIsConnecting(true);
+    try {
+      await whatsappService.disconnectInstance(instance.id, session);
+      setIsConfirmDisconnectOpen(false);
+      onStatusChanged();
+    } catch (err) {
+      console.error('Erro ao desconectar WhatsApp:', err);
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -346,6 +351,19 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
 
         </div>
       </div>
+
+      {/* Custom Confirmation Modal: Disconnect WhatsApp */}
+      <ConfirmModal
+        isOpen={isConfirmDisconnectOpen}
+        title="Desconectar WhatsApp"
+        description="Tem certeza que deseja desconectar sua conta de WhatsApp deste CRM? O espelhamento em tempo real será pausado até uma nova reconexão via QR Code."
+        confirmText="Sim, Desconectar"
+        cancelText="Manter Conectado"
+        variant="danger"
+        isLoading={isConnecting}
+        onClose={() => setIsConfirmDisconnectOpen(false)}
+        onConfirm={handleConfirmDisconnect}
+      />
     </div>
   );
 };

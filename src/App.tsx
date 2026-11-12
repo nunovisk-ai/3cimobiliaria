@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginCard } from './components/auth/LoginCard';
 import { AppLayout } from './components/layout/AppLayout';
-import { WelcomeDashboard } from './components/dashboard/WelcomeDashboard';
 import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { LeadModal } from './components/leads/LeadModal';
 import { NewLeadModal } from './components/leads/NewLeadModal';
@@ -256,16 +255,7 @@ const AppContent: React.FC = () => {
       unreadWhatsAppCount={unreadWhatsAppCount}
       onOpenWhatsAppModal={() => setIsWhatsAppModalOpen(true)}
     >
-      
-      {/* 1. VISÃO GERAL DASHBOARD */}
-      {activeTab === 'dashboard' && (
-        <WelcomeDashboard 
-          onGoToKanban={() => setActiveTab('kanban')}
-          onGoToAgenda={() => setActiveTab('agenda')}
-          onGoToWhatsApp={() => setActiveTab('whatsapp')}
-          unreadWhatsAppCount={unreadWhatsAppCount}
-        />
-      )}
+
 
       {/* 2. FUNIL DE VENDAS */}
       {activeTab === 'kanban' && (

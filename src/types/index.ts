@@ -109,6 +109,7 @@ export interface WhatsAppMessage {
   audioDuration?: number;
   mediaType?: 'image' | 'pdf' | 'audio' | 'document' | 'sticker' | 'video' | 'gif';
   mediaName?: string;
+  caption?: string;
   timestamp: string;
   status: 'sent' | 'delivered' | 'read';
 }

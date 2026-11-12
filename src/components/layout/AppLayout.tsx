@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
-  LayoutDashboard, 
   Filter, 
   CalendarDays, 
   Building2,
@@ -41,10 +40,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   // Tab labels for top header breadcrumb
   const tabTitles: Record<string, { title: string; subtitle: string }> = {
     kanban: { title: 'Funil de Vendas', subtitle: 'Gestão visual de negociações e leads' },
-    empreendimentos: { title: 'Catálogo de Empreendimentos', subtitle: 'Lançamentos e unidades disponíveis' },
-    agenda: { title: 'Agenda de Visitas', subtitle: 'Agendamentos e confirmações de plantão' },
     whatsapp: { title: 'WhatsApp Inbox', subtitle: '' },
-    dashboard: { title: 'Visão Geral & Métricas', subtitle: 'Performance de vendas e conversões' },
+    agenda: { title: 'Agenda de Visitas', subtitle: 'Agendamentos e confirmações de plantão' },
+    empreendimentos: { title: 'Catálogo de Empreendimentos', subtitle: 'Lançamentos e unidades disponíveis' },
     usuarios: { title: 'Gestão de Usuários & Equipe', subtitle: 'Permissões, acessos e auditoria' },
   };
 
@@ -123,34 +121,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               {!isCollapsed && <span>Funil de Vendas</span>}
             </button>
 
-            {/* Empreendimentos */}
-            <button
-              onClick={() => onTabChange('empreendimentos')}
-              title={isCollapsed ? 'Empreendimentos' : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'empreendimentos'
-                  ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            >
-              <Building2 className="w-4 h-4 flex-shrink-0" />
-              {!isCollapsed && <span>Empreendimentos</span>}
-            </button>
-
-            {/* Agenda de Visitas */}
-            <button
-              onClick={() => onTabChange('agenda')}
-              title={isCollapsed ? 'Agenda de Visitas' : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'agenda'
-                  ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            >
-              <CalendarDays className="w-4 h-4 flex-shrink-0" />
-              {!isCollapsed && <span>Agenda de Visitas</span>}
-            </button>
-
             {/* WhatsApp Inbox */}
             <button
               onClick={() => onTabChange('whatsapp')}
@@ -183,32 +153,46 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 )
               )}
             </button>
-          </div>
 
-          {/* Group 2: Relatórios & Administração */}
-          <div className="space-y-1">
-            {!isCollapsed && (
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 mb-2 font-heading">
-                Relatórios & Gestão
-              </p>
-            )}
-
-            {/* Visão Geral */}
+            {/* Agenda de Visitas */}
             <button
-              onClick={() => onTabChange('dashboard')}
-              title={isCollapsed ? 'Visão Geral' : undefined}
+              onClick={() => onTabChange('agenda')}
+              title={isCollapsed ? 'Agenda de Visitas' : undefined}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'dashboard'
+                activeTab === 'agenda'
                   ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
             >
-              <LayoutDashboard className="w-4 h-4 flex-shrink-0" />
-              {!isCollapsed && <span>Visão Geral</span>}
+              <CalendarDays className="w-4 h-4 flex-shrink-0" />
+              {!isCollapsed && <span>Agenda de Visitas</span>}
             </button>
 
-            {/* Gestão de Usuários (Admin Only) */}
-            {isAdmin && (
+            {/* Empreendimentos */}
+            <button
+              onClick={() => onTabChange('empreendimentos')}
+              title={isCollapsed ? 'Empreendimentos' : undefined}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'empreendimentos'
+                  ? 'bg-brand-500 text-white shadow-md shadow-brand-500/25'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
+              } ${isCollapsed ? 'justify-center px-0' : ''}`}
+            >
+              <Building2 className="w-4 h-4 flex-shrink-0" />
+              {!isCollapsed && <span>Empreendimentos</span>}
+            </button>
+          </div>
+
+          {/* Group 2: Administração (Admin Only) */}
+          {isAdmin && (
+            <div className="space-y-1">
+              {!isCollapsed && (
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 mb-2 font-heading">
+                  Administração
+                </p>
+              )}
+
+              {/* Gestão de Usuários (Admin Only) */}
               <button
                 onClick={() => onTabChange('usuarios')}
                 title={isCollapsed ? 'Equipe & Usuários' : undefined}
@@ -221,8 +205,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 <Users className="w-4 h-4 flex-shrink-0" />
                 {!isCollapsed && <span>Equipe & Usuários</span>}
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
         </div>
 
@@ -333,19 +317,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           {/* Right Header Utilities */}
           <div className="flex items-center gap-2 sm:gap-3">
             
-            {/* Unread WhatsApp Quick Alert Pill on Initial/Other Screens */}
-            {unreadWhatsAppCount > 0 && activeTab !== 'whatsapp' && (
-              <button
-                onClick={() => onTabChange('whatsapp')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
-                title="Abrir mensagens não lidas no WhatsApp Inbox"
-              >
-                <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600" />
-                <span>
-                  {unreadWhatsAppCount} {unreadWhatsAppCount === 1 ? 'mensagem não lida' : 'mensagens não lidas'}
-                </span>
-              </button>
-            )}
+
 
             {/* Mobile WhatsApp Pill */}
             <div 
@@ -451,26 +423,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 </button>
 
                 <button
-                  onClick={() => { onTabChange('empreendimentos'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
-                    activeTab === 'empreendimentos' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <Building2 className="w-4 h-4" />
-                  <span>Empreendimentos</span>
-                </button>
-
-                <button
-                  onClick={() => { onTabChange('agenda'); setMobileMenuOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
-                    activeTab === 'agenda' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <CalendarDays className="w-4 h-4" />
-                  <span>Agenda de Visitas</span>
-                </button>
-
-                <button
                   onClick={() => { onTabChange('whatsapp'); setMobileMenuOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
                     activeTab === 'whatsapp' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
@@ -486,24 +438,34 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     </span>
                   )}
                 </button>
-              </div>
-
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 mb-2 font-heading">
-                  Relatórios & Gestão
-                </p>
 
                 <button
-                  onClick={() => { onTabChange('dashboard'); setMobileMenuOpen(false); }}
+                  onClick={() => { onTabChange('agenda'); setMobileMenuOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
-                    activeTab === 'dashboard' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
+                    activeTab === 'agenda' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <LayoutDashboard className="w-4 h-4" />
-                  <span>Visão Geral</span>
+                  <CalendarDays className="w-4 h-4" />
+                  <span>Agenda de Visitas</span>
                 </button>
 
-                {isAdmin && (
+                <button
+                  onClick={() => { onTabChange('empreendimentos'); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
+                    activeTab === 'empreendimentos' ? 'bg-brand-500 text-white' : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Empreendimentos</span>
+                </button>
+              </div>
+
+              {isAdmin && (
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 mb-2 font-heading">
+                    Administração
+                  </p>
+
                   <button
                     onClick={() => { onTabChange('usuarios'); setMobileMenuOpen(false); }}
                     className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold ${
@@ -513,8 +475,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     <Users className="w-4 h-4" />
                     <span>Equipe & Usuários</span>
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
             </div>
 

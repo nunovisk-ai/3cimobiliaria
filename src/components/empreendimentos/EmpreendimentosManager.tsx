@@ -8,6 +8,7 @@ import {
   Search, 
   X 
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 interface EmpreendimentosManagerProps {
   empreendimentos: Empreendimento[];
@@ -20,6 +21,7 @@ export const EmpreendimentosManager: React.FC<EmpreendimentosManagerProps> = ({
   isLoading = false,
   onRefresh
 }) => {
+  const { isAdmin } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -82,15 +84,7 @@ export const EmpreendimentosManager: React.FC<EmpreendimentosManagerProps> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900">Catálogo de Empreendimentos</h2>
-            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-orange-100 text-brand-700 border border-orange-200">
-              Site Oficial 3cimobiliaria.com.br
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Produtos parceiros do Grupo 3C em São Paulo (MCMV, Casa Paulista e Médio Padrão)
-          </p>
+          <h2 className="text-xl font-bold text-slate-900">Catálogo de Empreendimentos</h2>
         </div>
 
         <div className="flex items-center gap-2">
@@ -108,14 +102,16 @@ export const EmpreendimentosManager: React.FC<EmpreendimentosManagerProps> = ({
             />
           </div>
 
-          {/* Add Button (Available to Manager / Admin) */}
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="px-4 py-2 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl text-xs font-semibold shadow-xs shadow-brand-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Cadastrar Empreendimento</span>
-          </button>
+          {/* Add Button (Available Only to Admin) */}
+          {isAdmin && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="px-4 py-2 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white rounded-xl text-xs font-semibold shadow-xs shadow-brand-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Cadastrar Empreendimento</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -206,8 +202,8 @@ export const EmpreendimentosManager: React.FC<EmpreendimentosManagerProps> = ({
         )}
       </div>
 
-      {/* Modal: Cadastrar Novo Empreendimento */}
-      {isModalOpen && (
+      {/* Modal: Cadastrar Novo Empreendimento (Admin only) */}
+      {isModalOpen && isAdmin && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
           <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             

@@ -248,7 +248,12 @@ const ImageMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: stri
 const DocumentMessageViewer: React.FC<{ message: WhatsAppMessage; sessionName: string }> = ({ message, sessionName }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const docName = message.mediaName || (message.text?.startsWith('📄') ? message.text.replace(/^📄\s*/, '') : 'Documento');
-  const caption = message.text && !message.text.startsWith('📄') && message.text !== docName ? message.text : '';
+  const rawCaption = message.caption || (
+    message.text && message.text !== docName && message.text !== `📄 ${docName}`
+      ? message.text.replace(/^📄\s*/, '').trim()
+      : ''
+  );
+  const caption = rawCaption !== docName ? rawCaption : '';
 
   const handleDownload = async () => {
     setIsDownloading(true);
@@ -632,6 +637,23 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isInitialLoadRef = useRef(true);
+
+  const scrollToBottom = (behavior: 'auto' | 'smooth' = 'auto') => {
+    if (messagesContainerRef.current) {
+      if (behavior === 'auto') {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      } else {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+    } else if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior });
+    }
+  };
 
   const selectedLead = isConnected ? (leads.find(l => l.id === selectedLeadId) || null) : null;
   const unlinkedContact = isConnected ? (unlinkedContacts.find(c => c.id === selectedLeadId) || null) : null;
@@ -1030,7 +1052,23 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           }
         }
 
-        setMessages(merged);
+        if (isSilent) {
+          setMessages(prev => {
+            if (
+              prev.length === merged.length &&
+              prev[prev.length - 1]?.id === merged[merged.length - 1]?.id &&
+              prev[prev.length - 1]?.status === merged[merged.length - 1]?.status
+            ) {
+              const anyStatusDiff = prev.some((p, i) => p.status !== merged[i]?.status);
+              if (!anyStatusDiff) {
+                return prev;
+              }
+            }
+            return merged;
+          });
+        } else {
+          setMessages(merged);
+        }
       } else if (leadId) {
         const msgs = await whatsappService.getMessages(leadId);
         setMessages(msgs);
@@ -1040,7 +1078,12 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
     } catch (err) {
       console.error('Falha ao carregar mensagens:', err);
     } finally {
-      if (!isSilent) setIsLoadingMessages(false);
+      if (!isSilent) {
+        setIsLoadingMessages(false);
+        requestAnimationFrame(() => scrollToBottom('auto'));
+        setTimeout(() => scrollToBottom('auto'), 50);
+        setTimeout(() => scrollToBottom('auto'), 180);
+      }
     }
   };
 
@@ -1063,6 +1106,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   useEffect(() => {
     if (selectedLeadId && isConnected) {
+      isInitialLoadRef.current = true;
       const isCurUnlinked = unlinkedContacts.some(c => c.id === selectedLeadId);
       loadMessages(selectedLeadId, isCurUnlinked, false);
     } else {
@@ -1072,7 +1116,21 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      scrollToBottom('auto');
+      return;
+    }
+    const container = messagesContainerRef.current;
+    if (container) {
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 200;
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.fromMe || isNearBottom) {
+        scrollToBottom('smooth');
+      }
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
 
   // Handle File Selection for Attachment (Photos & Documents)
@@ -1298,6 +1356,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         leadId: currentChatKey,
         fromMe: true,
         text: displayText,
+        caption: textToSend || undefined,
         mediaType: attachmentToSend.isImage ? 'image' : 'document',
         mediaName: attachmentToSend.fileName,
         mediaUrl: attachmentToSend.base64,
@@ -2014,7 +2073,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             </div>
 
             {/* Chat Messages Feed */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
               
               {/* Date Header Separator */}
               <div className="flex justify-center my-2">
