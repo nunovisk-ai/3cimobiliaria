@@ -253,7 +253,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     {user?.name}
                   </p>
                   <p className="text-[10px] text-slate-500 truncate leading-none mt-0.5">
-                    {user?.role === 'admin' ? 'Administrador Geral' : user?.role === 'gerente' ? 'Gerência Comercial' : `CRECI: ${user?.creci || '241.980-F'}`}
+                    {user?.role === 'admin' ? 'Administrador Geral' : user?.role === 'gerente' ? 'Gerência Comercial' : 'Corretor'}
                   </p>
                 </div>
               )}
