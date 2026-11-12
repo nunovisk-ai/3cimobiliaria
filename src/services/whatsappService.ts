@@ -407,11 +407,19 @@ export const whatsappService = {
    */
   async fetchLiveQrCode(sessionName: string = '3c_vendedor'): Promise<string | null> {
     try {
-      const res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${sessionName}`, {
+      let res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${sessionName}`, {
         headers: {
           'apikey': EVOLUTION_API_KEY,
         },
       });
+      if (res.status === 404) {
+        await this.ensureInstance(sessionName);
+        res = await fetch(`${EVOLUTION_API_URL}/instance/connect/${sessionName}`, {
+          headers: {
+            'apikey': EVOLUTION_API_KEY,
+          },
+        });
+      }
       if (!res.ok) return null;
       const data = await res.json();
       return data.base64 || null;
@@ -419,6 +427,31 @@ export const whatsappService = {
       console.warn('Could not fetch QR code from Evolution API:', err);
       return null;
     }
+  },
+
+  /**
+   * Cleans and resets an instance completely (purging old Baileys sessions & Redis cache)
+   */
+  async resetInstance(sessionName: string = '3c_vendedor'): Promise<string | null> {
+    try {
+      await fetch(`${EVOLUTION_API_URL}/instance/logout/${sessionName}`, {
+        method: 'DELETE',
+        headers: { apikey: EVOLUTION_API_KEY },
+      });
+    } catch (e) {
+      // ignore
+    }
+    try {
+      await fetch(`${EVOLUTION_API_URL}/instance/delete/${sessionName}`, {
+        method: 'DELETE',
+        headers: { apikey: EVOLUTION_API_KEY },
+      });
+    } catch (e) {
+      // ignore
+    }
+    configuredSettingsSessions.delete(sessionName);
+    await this.ensureInstance(sessionName);
+    return await this.fetchLiveQrCode(sessionName);
   },
 
   /**
@@ -2069,9 +2102,15 @@ export const whatsappService = {
         method: 'DELETE',
         headers: { apikey: EVOLUTION_API_KEY },
       });
+      // Delete instance from Evolution to wipe stale Baileys session and Redis keys
+      await fetch(`${EVOLUTION_API_URL}/instance/delete/${sessionName}`, {
+        method: 'DELETE',
+        headers: { apikey: EVOLUTION_API_KEY },
+      });
     } catch (err) {
       console.warn('Error logging out from Evolution API:', err);
     }
+    configuredSettingsSessions.delete(sessionName);
 
     await supabase
       .from('whatsapp_instances')

@@ -51,6 +51,22 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
     }
   };
 
+  // Reset instance to clean corrupted Baileys auth credentials
+  const handleResetSession = async () => {
+    setIsRefreshingQr(true);
+    try {
+      const qr = await whatsappService.resetInstance(session);
+      if (qr) {
+        setLiveQrCode(qr);
+      }
+      setTimeLeft(30);
+    } catch (err) {
+      console.warn('Erro ao reiniciar sessão:', err);
+    } finally {
+      setIsRefreshingQr(false);
+    }
+  };
+
   // Timer countdown and live polling
   useEffect(() => {
     if (isConnected) return;
@@ -314,6 +330,16 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
                   >
                     <RotateCw className={`w-3.5 h-3.5 text-emerald-600 ${isRefreshingQr ? 'animate-spin' : ''}`} />
                     <span>{isRefreshingQr ? 'Gerando novo QR Code...' : `Atualiza em ${timeLeft}s (clique p/ renovar)`}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetSession}
+                    disabled={isRefreshingQr}
+                    className="text-[10px] text-slate-400 hover:text-rose-600 underline mt-1.5 transition-colors cursor-pointer"
+                    title="Deleta a sessão antiga na API e gera chaves criptográficas 100% novas"
+                  >
+                    Erro ao conectar? Reiniciar sessão limpa
                   </button>
                 </div>
 
