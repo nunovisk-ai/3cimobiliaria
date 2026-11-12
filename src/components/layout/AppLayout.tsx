@@ -147,11 +147,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                     {unreadWhatsAppCount}
                   </span>
                 )
-              ) : (
-                isWhatsAppConnected && !isCollapsed && (
-                  <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                )
-              )}
+              ) : null}
             </button>
 
             {/* Agenda de Visitas */}

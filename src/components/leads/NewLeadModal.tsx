@@ -3,6 +3,7 @@ import { Lead, FunnelStage } from '../../types';
 import { Empreendimento } from '../../services/empreendimentosService';
 import { X, UserPlus } from 'lucide-react';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
+import { CurrencyInput } from '../common/CurrencyInput';
 
 interface NewLeadModalProps {
   empreendimentos: Empreendimento[];
@@ -177,41 +178,35 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Renda Bruta (R$)</label>
-              <input
-                type="number"
-                step="100"
+              <label className="block font-semibold text-slate-700 mb-1">Renda Bruta Mensal</label>
+              <CurrencyInput
                 value={rendaMensal}
-                onChange={(e) => setRendaMensal(e.target.value ? Number(e.target.value) : '')}
-                placeholder="Ex: 5000"
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                onChange={(val) => setRendaMensal(val || '')}
+                placeholder="0,00"
+                textColor="text-slate-900"
               />
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Saldo FGTS (R$)</label>
-              <input
-                type="number"
-                step="500"
+              <label className="block font-semibold text-slate-700 mb-1">Saldo FGTS</label>
+              <CurrencyInput
                 value={fgtsValor}
-                onChange={(e) => setFgtsValor(e.target.value ? Number(e.target.value) : '')}
-                placeholder="Ex: 25000"
-                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-emerald-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                onChange={(val) => setFgtsValor(val || '')}
+                placeholder="0,00"
+                prefixColor="text-emerald-500"
+                textColor="text-emerald-600"
               />
             </div>
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block font-semibold text-slate-700">Empreendimento de Interesse</label>
-              <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
-            </div>
+            <label className="block font-semibold text-slate-700 mb-1">Empreendimento de Interesse</label>
             <select
               value={empreendimentoInteresse}
               onChange={(e) => setEmpreendimentoInteresse(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
             >
-              <option value="">Selecione um empreendimento (Opcional)</option>
+              <option value=""></option>
               {empreendimentos.map(emp => (
                 <option key={emp.id} value={emp.nome}>
                   {emp.nome} ({emp.construtora} • {emp.regiaoSp})
@@ -222,16 +217,13 @@ export const NewLeadModal: React.FC<NewLeadModalProps> = ({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block font-semibold text-slate-700">Origem do Lead</label>
-                <span className="text-[10px] text-slate-400 font-normal">Opcional</span>
-              </div>
+              <label className="block font-semibold text-slate-700 mb-1">Origem do Lead</label>
               <select
                 value={origemLead}
                 onChange={(e) => setOrigemLead(e.target.value as any)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
               >
-                <option value="">Selecione a origem (Opcional)</option>
+                <option value=""></option>
                 <option value="whatsapp">WhatsApp Direto</option>
                 <option value="zap">Portal Zap / VivaReal</option>
                 <option value="meta">Anúncio Meta (Instagram/Facebook)</option>

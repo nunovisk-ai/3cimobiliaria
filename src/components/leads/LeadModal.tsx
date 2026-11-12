@@ -16,6 +16,7 @@ import {
 import { WhatsAppIcon } from '../icons/WhatsAppIcon';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { CurrencyInput } from '../common/CurrencyInput';
 
 interface LeadModalProps {
   lead: Lead;
@@ -400,24 +401,23 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Renda Bruta Mensal (R$)</label>
-                  <input
-                    type="number"
-                    step="100"
+                  <label className="block font-semibold text-slate-700 mb-1">Renda Bruta Mensal</label>
+                  <CurrencyInput
                     value={formData.rendaMensal}
-                    onChange={(e) => setFormData({ ...formData, rendaMensal: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    onChange={(val) => setFormData({ ...formData, rendaMensal: val })}
+                    placeholder="0,00"
+                    textColor="text-slate-900"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Saldo de FGTS (R$)</label>
-                  <input
-                    type="number"
-                    step="500"
+                  <label className="block font-semibold text-slate-700 mb-1">Saldo de FGTS</label>
+                  <CurrencyInput
                     value={formData.fgtsValor}
-                    onChange={(e) => setFormData({ ...formData, fgtsValor: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-emerald-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                    onChange={(val) => setFormData({ ...formData, fgtsValor: val })}
+                    placeholder="0,00"
+                    prefixColor="text-emerald-500"
+                    textColor="text-emerald-600"
                   />
                 </div>
 
@@ -458,7 +458,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     onChange={(e) => setFormData({ ...formData, empreendimentoInteresse: e.target.value })}
                     className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   >
-                    <option value="">Selecione um empreendimento (Opcional)</option>
+                    <option value=""></option>
                     {empreendimentos.map(emp => (
                       <option key={emp.id} value={emp.nome}>
                         {emp.nome} ({emp.construtora} • {emp.regiaoSp})

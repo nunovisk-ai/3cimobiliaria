@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Lead, FunnelStage, WhatsAppMessage, WhatsAppInstance } from '../../types';
 import { whatsappService, formatWhatsAppTimestamp } from '../../services/whatsappService';
 import { formatCPF, isValidCPF } from '../../utils/cpfValidator';
+import { CurrencyInput } from '../common/CurrencyInput';
 import { 
   Search, 
   Send, 
@@ -2527,29 +2528,26 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                     )}
                   </div>
 
-                  {/* 4. Renda Bruta (R$) & Saldo FGTS (R$) */}
+                  {/* 4. Renda Bruta Mensal & Saldo FGTS */}
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Renda Bruta (R$)</label>
-                      <input
-                        type="number"
-                        step="100"
+                      <label className="block font-semibold text-slate-700 mb-1">Renda Bruta Mensal</label>
+                      <CurrencyInput
                         value={editRenda}
-                        onChange={(e) => setEditRenda(e.target.value ? Number(e.target.value) : '')}
-                        placeholder="Ex: 5000"
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-900"
+                        onChange={(val) => setEditRenda(val || '')}
+                        placeholder="0,00"
+                        textColor="text-slate-900"
                       />
                     </div>
 
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-1">Saldo FGTS (R$)</label>
-                      <input
-                        type="number"
-                        step="500"
+                      <label className="block font-semibold text-slate-700 mb-1">Saldo FGTS</label>
+                      <CurrencyInput
                         value={editFgts}
-                        onChange={(e) => setEditFgts(e.target.value ? Number(e.target.value) : '')}
-                        placeholder="Ex: 25000"
-                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-emerald-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                        onChange={(val) => setEditFgts(val || '')}
+                        placeholder="0,00"
+                        prefixColor="text-emerald-500"
+                        textColor="text-emerald-600"
                       />
                     </div>
                   </div>
@@ -2562,7 +2560,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                       onChange={(e) => setEditEmpreendimento(e.target.value)}
                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
                     >
-                      <option value="">Selecione um empreendimento (Opcional)</option>
+                      <option value=""></option>
                       {empreendimentos.map(emp => (
                         <option key={emp.id} value={emp.nome}>
                           {emp.construtora ? `${emp.nome} (${emp.construtora})` : emp.nome}
@@ -2580,7 +2578,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                         onChange={(e) => setEditOrigem(e.target.value as any)}
                         className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 text-slate-800"
                       >
-                        <option value="">Selecione a origem (Opcional)</option>
+                        <option value=""></option>
                         <option value="whatsapp">WhatsApp Direto</option>
                         <option value="zap">Portal Zap / VivaReal</option>
                         <option value="meta">Anúncio Meta (Instagram/Facebook)</option>
