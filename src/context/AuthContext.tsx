@@ -13,6 +13,9 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
   isAdmin: boolean;
   isManager: boolean;
+  isPasswordRecoveryMode: boolean;
+  saveRecoveredPassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  cancelPasswordRecovery: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +23,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isPasswordRecoveryMode, setIsPasswordRecoveryMode] = useState<boolean>(false);
 
   // Helper to sync user profile from public.profiles
   const fetchAndSetUserProfile = async (authUserId: string, email: string): Promise<UserProfile> => {
@@ -65,19 +69,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    // Check saved session in localStorage
-    const savedUser = localStorage.getItem('grupo3c_auth_user');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (e) {
-        console.error('Failed to parse saved user', e);
+    // 1. Detect if URL hash or search params indicate an incoming password recovery link
+    const hash = typeof window !== 'undefined' ? window.location.hash : '';
+    const isRecoveryHash = hash.includes('type=recovery') || (hash.includes('access_token=') && hash.includes('type=recovery'));
+
+    if (isRecoveryHash) {
+      setIsPasswordRecoveryMode(true);
+      // Do not restore cached user session from localStorage during recovery
+      localStorage.removeItem('grupo3c_auth_user');
+      setUser(null);
+    } else {
+      // Check saved session in localStorage
+      const savedUser = localStorage.getItem('grupo3c_auth_user');
+      if (savedUser) {
+        try {
+          setUser(JSON.parse(savedUser));
+        } catch (e) {
+          console.error('Failed to parse saved user', e);
+        }
       }
     }
 
     if (isSupabaseConfigured) {
       // Check active Supabase session
       supabase.auth.getSession().then(async ({ data: { session } }) => {
+        const currentHash = typeof window !== 'undefined' ? window.location.hash : '';
+        if (isRecoveryHash || currentHash.includes('type=recovery')) {
+          setIsPasswordRecoveryMode(true);
+          setIsLoading(false);
+          return;
+        }
+
         if (session?.user?.email) {
           await fetchAndSetUserProfile(session.user.id, session.user.email);
         }
@@ -85,6 +107,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecoveryMode(true);
+          setIsLoading(false);
+          return;
+        }
+
+        const currentHash = typeof window !== 'undefined' ? window.location.hash : '';
+        if (currentHash.includes('type=recovery')) {
+          setIsPasswordRecoveryMode(true);
+          setIsLoading(false);
+          return;
+        }
+
         if (session?.user?.email) {
           if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
             await fetchAndSetUserProfile(session.user.id, session.user.email);
@@ -191,6 +226,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('grupo3c_auth_user');
   };
 
+  const saveRecoveredPassword = async (newPassword: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // 1. Update password on active recovery session in Supabase Auth
+      const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+
+      // 2. Also update password and clear primeiro_acesso in public.profiles
+      if (data.user?.id) {
+        await usersService.changePassword(data.user.id, newPassword).catch(() => {});
+        await fetchAndSetUserProfile(data.user.id, data.user.email || '');
+      }
+
+      // 3. Clear URL hash
+      if (typeof window !== 'undefined' && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+
+      setIsPasswordRecoveryMode(false);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Falha ao salvar nova senha no Supabase' };
+    }
+  };
+
+  const cancelPasswordRecovery = async (): Promise<void> => {
+    if (typeof window !== 'undefined' && window.history.replaceState) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    setIsPasswordRecoveryMode(false);
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut().catch(() => {});
+    }
+    setUser(null);
+    localStorage.removeItem('grupo3c_auth_user');
+  };
+
   const isAdmin = user?.role === 'admin';
   const isManager = user?.role === 'gerente' || user?.role === 'admin';
   const isFirstAccess = !!user?.primeiroAcesso;
@@ -206,7 +277,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         completeFirstAccess, 
         refreshProfile,
         isAdmin, 
-        isManager 
+        isManager,
+        isPasswordRecoveryMode,
+        saveRecoveredPassword,
+        cancelPasswordRecovery
       }}
     >
       {children}

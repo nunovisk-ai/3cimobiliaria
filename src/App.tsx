@@ -12,13 +12,14 @@ import { WhatsAppInboxView } from './components/whatsapp/WhatsAppInboxView';
 import { WhatsAppConnectModal } from './components/whatsapp/WhatsAppConnectModal';
 import { UserManagerView } from './components/users/UserManagerView';
 import { FirstAccessModal } from './components/auth/FirstAccessModal';
+import { ResetPasswordModal } from './components/auth/ResetPasswordModal';
 import { Lead, FunnelStage, WhatsAppInstance } from './types';
 import { leadsService } from './services/leadsService';
 import { empreendimentosService, Empreendimento } from './services/empreendimentosService';
 import { whatsappService } from './services/whatsappService';
 
 const AppContent: React.FC = () => {
-  const { user, isLoading: authLoading, isFirstAccess } = useAuth();
+  const { user, isLoading: authLoading, isFirstAccess, isPasswordRecoveryMode } = useAuth();
   const [activeTab, setActiveTab] = useState<'dashboard' | 'kanban' | 'empreendimentos' | 'agenda' | 'whatsapp' | 'usuarios'>('kanban');
 
   // Leads state
@@ -240,7 +241,12 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // Not authenticated: Show Clean Login Screen
+  // 1. Password Recovery Mode (user opened magic recovery link from email)
+  if (isPasswordRecoveryMode) {
+    return <ResetPasswordModal />;
+  }
+
+  // 2. Not authenticated: Show Clean Login Screen
   if (!user) {
     return <LoginCard />;
   }

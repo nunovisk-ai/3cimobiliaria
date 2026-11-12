@@ -23,8 +23,6 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [dispatchedCode, setDispatchedCode] = useState<string | null>(null);
-  const [isResendSimulated, setIsResendSimulated] = useState(false);
 
   if (!isOpen) return null;
 
@@ -50,13 +48,11 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
       const generatedCode = await usersService.generateVerificationCode(email, 'recuperacao');
       
       // 2. Dispatch via Resend API and Supabase Auth
-      const emailResult = await emailService.sendPasswordRecoveryEmail(email, generatedCode);
+      await emailService.sendPasswordRecoveryEmail(email, generatedCode);
       
-      setDispatchedCode(generatedCode);
-      setIsResendSimulated(!!emailResult.simulated);
       setStep(2);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Não foi possível enviar o código. Verifique se o e-mail está cadastrado.');
+      setErrorMsg(err.message || 'Não foi possível enviar o e-mail de recuperação. Verifique se o e-mail está cadastrado.');
     } finally {
       setIsLoading(false);
     }
@@ -194,36 +190,23 @@ export const PasswordRecoveryModal: React.FC<PasswordRecoveryModalProps> = ({
           <form onSubmit={handleResetPassword} className="space-y-4">
             
             {/* Info Box */}
-            <div className="p-3.5 bg-orange-50/90 border border-orange-200/80 rounded-xl text-xs text-orange-950">
-              <div className="flex items-center gap-2 font-semibold text-orange-900 mb-1">
+            <div className="p-3.5 bg-orange-50/90 border border-orange-200/80 rounded-xl text-xs text-orange-950 space-y-2">
+              <div className="flex items-center gap-2 font-semibold text-orange-900">
                 <Mail className="w-4 h-4 text-brand-600" />
-                <span>Código enviado por e-mail!</span>
+                <span>Instruções enviadas para seu e-mail!</span>
               </div>
               <p className="text-[11px] text-orange-800 leading-relaxed">
-                Enviamos um código de segurança de 6 dígitos para o e-mail <strong>{email}</strong>. Verifique sua caixa de entrada e pasta de spam.
+                Verifique sua caixa de entrada e pasta de spam em <strong>{email}</strong>.
               </p>
-            </div>
-
-            {/* Fallback / Instant Access Assist */}
-            {dispatchedCode && (
-              <div className="p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs flex items-center justify-between gap-2 animate-in fade-in">
-                <div>
-                  <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block">
-                    {isResendSimulated ? 'Código Gerado no Sistema:' : 'Cópia de Segurança:'}
-                  </span>
-                  <span className="font-mono font-extrabold text-amber-900 text-sm tracking-widest">
-                    {dispatchedCode}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCode(dispatchedCode)}
-                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-semibold transition-all cursor-pointer shadow-xs"
-                >
-                  Preencher
-                </button>
+              <div className="pt-1.5 border-t border-orange-200/60 text-[11px] text-orange-900 space-y-1">
+                <p>
+                  🔗 <strong>Pelo link:</strong> Se você recebeu o link da Caixa Postal, basta clicar em <em>"Reset password"</em> no seu e-mail para abrir a tela de nova senha.
+                </p>
+                <p>
+                  🔢 <strong>Pelo código:</strong> Se você recebeu um código de 6 dígitos no seu e-mail, digite-o abaixo junto com a sua nova senha:
+                </p>
               </div>
-            )}
+            </div>
 
             {/* Code Field */}
             <div>

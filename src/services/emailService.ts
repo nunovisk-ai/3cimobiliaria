@@ -86,7 +86,10 @@ export const emailService = {
 
     // 2. Complementary attempt via Supabase Auth reset (triggers custom SMTP if configured in Supabase project)
     try {
-      await supabase.auth.resetPasswordForEmail(cleanEmail).catch(() => {});
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://grupo3c.vitrai.com.br';
+      await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${origin}/`,
+      }).catch(() => {});
     } catch {
       // Ignored non-blocking
     }
