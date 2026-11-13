@@ -150,28 +150,28 @@ const AudioMessagePlayer: React.FC<{ message: WhatsAppMessage; sessionName: stri
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-3 py-1 min-w-[200px] sm:min-w-[240px]">
+    <div className="flex items-center gap-2.5 sm:gap-3 py-1 w-full min-w-0 max-w-full">
       <button
         type="button"
         onClick={togglePlay}
         disabled={isLoadingAudio}
-        className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 cursor-pointer shadow-xs ${
+        className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 cursor-pointer shadow-xs ${
           message.fromMe
             ? 'bg-white text-emerald-700 hover:bg-emerald-50'
             : 'bg-emerald-600 text-white hover:bg-emerald-700'
         }`}
       >
         {isLoadingAudio ? (
-          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
         ) : isPlaying ? (
-          <Pause className="w-4 h-4 fill-current" />
+          <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" />
         ) : (
-          <Play className="w-4 h-4 fill-current ml-0.5" />
+          <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current ml-0.5" />
         )}
       </button>
 
       <div className="flex-1 min-w-0">
-        <div className="relative h-1.5 bg-black/15 rounded-full overflow-hidden cursor-pointer">
+        <div className="relative h-1.5 w-full bg-black/15 rounded-full overflow-hidden cursor-pointer">
           <div 
             className={`h-full rounded-full transition-all ${message.fromMe ? 'bg-white' : 'bg-emerald-600'}`}
             style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
@@ -181,9 +181,9 @@ const AudioMessagePlayer: React.FC<{ message: WhatsAppMessage; sessionName: stri
           message.fromMe ? 'text-emerald-100' : 'text-slate-500'
         }`}>
           <span>{isPlaying ? formatSec(currentTime) : formatSec(duration)}</span>
-          <span className="flex items-center gap-0.5 font-sans">
-            <Mic className="w-3 h-3" />
-            Áudio
+          <span className="flex items-center gap-0.5 font-sans flex-shrink-0">
+            <Mic className="w-3 h-3 flex-shrink-0" />
+            <span>Áudio</span>
           </span>
         </div>
       </div>
@@ -1035,7 +1035,14 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             id: chat.remoteJid,
             remoteJid: chat.remoteJid,
             allJids: chat.allJids && chat.allJids.length > 0 ? chat.allJids : [chat.remoteJid],
-            nome: (isValidContactName(chat.pushName) ? chat.pushName : null) || (isValidContactName(chat.name) ? chat.name : null) || chat.phone || 'Novo Contato',
+            nome: (() => {
+              const customName = whatsappService.getCustomContactName(session, chat.remoteJid, chat.allJids);
+              return (isValidContactName(customName) ? customName : null) ||
+                (isValidContactName(chat.name) ? chat.name : null) ||
+                (isValidContactName(chat.pushName) ? chat.pushName : null) ||
+                chat.phone ||
+                'Novo Contato';
+            })(),
             telefone: chat.phone,
             rawPhone: chat.rawPhone,
             mensagem: finalLastMessage || 'Conversa iniciada via WhatsApp',
@@ -1906,7 +1913,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         {/* ========================================================= */}
         {/* COLUMN 1: CONVERSATIONS LIST (LEFT PANE)                  */}
         {/* ========================================================= */}
-        <div className="w-80 sm:w-96 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-10">
+        <div className="w-72 sm:w-80 lg:w-84 xl:w-96 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-10">
           
           {/* Header & Status */}
           <div className="p-3.5 border-b border-slate-200 bg-slate-50/50 space-y-2.5">
@@ -2293,9 +2300,9 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
           <div className="flex-1 flex flex-col bg-[#F0F2F5] relative overflow-hidden">
             
             {/* Chat Top Header */}
-            <div className="bg-white px-4 py-2.5 border-b border-slate-200 flex items-center justify-between shadow-2xs z-10 gap-3">
+            <div className="bg-white px-3 sm:px-4 py-2 border-b border-slate-200 flex items-center justify-between shadow-2xs z-10 gap-2 min-w-0">
               {/* Left: Avatar & Contact Info */}
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
                 <div className="relative flex-shrink-0">
                   {(() => {
                     const selectedRealChat = selectedLead ? realChatMap.get(selectedLead.id) : null;
@@ -2339,30 +2346,31 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate min-w-0">
                       {isUnlinked ? unlinkedContact!.nome : selectedLead!.nome}
                     </h3>
                     {isUnlinked ? (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200 flex-shrink-0">
-                        ● Sem Lead no Funil
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold border border-amber-200 flex-shrink-0 whitespace-nowrap">
+                        <span className="hidden sm:inline">● Sem Lead no Funil</span>
+                        <span className="sm:hidden">● Sem Lead</span>
                       </span>
                     ) : (
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0 ${
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold flex-shrink-0 whitespace-nowrap ${
                         (STAGE_CONFIG[selectedLead!.statusFunil] || STAGE_CONFIG.novo_lead).badge
                       }`}>
                         {(STAGE_CONFIG[selectedLead!.statusFunil] || STAGE_CONFIG.novo_lead).label}
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-500 flex items-center gap-1.5 truncate">
-                    <span>{isUnlinked ? (unlinkedContact!.telefone || 'Número privado (LID WhatsApp)') : selectedLead!.telefone}</span>
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1.5 truncate min-w-0">
+                    <span className="truncate">{isUnlinked ? (unlinkedContact!.telefone || 'Número privado (LID WhatsApp)') : selectedLead!.telefone}</span>
                     {selectedLead?.empreendimentoInteresse && (
                       <>
-                        <span>•</span>
-                        <span className="text-brand-600 font-medium truncate flex items-center gap-0.5">
+                        <span className="flex-shrink-0">•</span>
+                        <span className="text-brand-600 font-medium truncate flex items-center gap-0.5 min-w-0">
                           <Building2 className="w-3 h-3 flex-shrink-0" />
-                          {selectedLead.empreendimentoInteresse}
+                          <span className="truncate">{selectedLead.empreendimentoInteresse}</span>
                         </span>
                       </>
                     )}
@@ -2371,7 +2379,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
               </div>
 
               {/* Right: Chat Actions */}
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                 {isUnlinked && (
                   /* Action to generate lead for unlinked contact */
                   <button
@@ -2380,10 +2388,10 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                       telefone: unlinkedContact!.telefone || '',
                       sourceLidJid: unlinkedContact!.remoteJid.includes('@lid') ? unlinkedContact!.remoteJid : undefined,
                     })}
-                    className="px-3 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer whitespace-nowrap"
+                    className="px-2 sm:px-3 py-1.5 bg-gradient-to-r from-brand-500 to-brand-600 hover:from-brand-600 hover:to-brand-700 text-white font-bold text-xs rounded-xl flex items-center gap-1 shadow-xs transition-all cursor-pointer whitespace-nowrap flex-shrink-0"
                   >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>Gerar Lead</span>
+                    <UserPlus className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span><span className="hidden sm:inline">Gerar Lead</span><span className="sm:hidden">+ Lead</span></span>
                   </button>
                 )}
 
@@ -2391,7 +2399,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                 <button
                   onClick={() => setShowRightDrawer(prev => !prev)}
                   title={showRightDrawer ? 'Ocultar painel de perfil do lead' : 'Expandir painel de perfil do lead'}
-                  className={`px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                  className={`px-2 sm:px-2.5 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs flex-shrink-0 whitespace-nowrap ${
                     showRightDrawer 
                       ? 'bg-slate-800 text-white border-slate-800 hover:bg-slate-700' 
                       : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
@@ -2399,13 +2407,13 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                 >
                   {showRightDrawer ? (
                     <>
-                      <PanelRightClose className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Ocultar Perfil</span>
+                      <PanelRightClose className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="hidden md:inline">Ocultar Perfil</span>
                     </>
                   ) : (
                     <>
-                      <PanelRightOpen className="w-3.5 h-3.5 text-brand-600" />
-                      <span className="hidden sm:inline">Ver Perfil</span>
+                      <PanelRightOpen className="w-3.5 h-3.5 text-brand-600 flex-shrink-0" />
+                      <span className="hidden md:inline">Ver Perfil</span>
                     </>
                   )}
                 </button>
@@ -2413,7 +2421,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
             </div>
 
             {/* Chat Messages Feed */}
-            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
+            <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]">
               
               {/* Date Header Separator */}
               <div className="flex justify-center my-2">
@@ -2472,11 +2480,11 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
                       className={`flex ${msg.fromMe ? 'justify-end' : 'justify-start'} animate-in fade-in duration-100`}
                     >
                       <div
-                        className={`max-w-[78%] sm:max-w-[65%] rounded-2xl px-4 py-2.5 shadow-xs relative text-xs leading-relaxed ${
+                        className={`max-w-[88%] sm:max-w-[80%] md:max-w-[75%] rounded-2xl px-3.5 sm:px-4 py-2.5 shadow-xs relative text-xs leading-relaxed min-w-0 break-words ${
                           msg.fromMe
                             ? 'bg-emerald-600 text-white rounded-tr-xs'
                             : 'bg-white text-slate-900 border border-slate-200/80 rounded-tl-xs'
-                        }`}
+                        } ${msg.mediaType === 'audio' || msg.text?.includes('🎤') ? 'min-w-[180px] sm:min-w-[220px]' : ''}`}
                       >
                         {/* Sender Name if incoming */}
                         {!msg.fromMe && senderDisplay && (
@@ -2730,7 +2738,7 @@ export const WhatsAppInboxView: React.FC<WhatsAppInboxViewProps> = ({
         {/* COLUMN 3: QUICK CRM LEAD DRAWER (RIGHT PANE)             */}
         {/* ========================================================= */}
         {isConnected && (selectedLead || unlinkedContact) && showRightDrawer && (
-          <div className="w-80 sm:w-88 bg-white border-l border-slate-200 p-5 overflow-y-auto space-y-5 flex-shrink-0 animate-in slide-in-from-right-10 duration-150">
+          <div className="w-72 sm:w-80 lg:w-84 xl:w-88 bg-white border-l border-slate-200 p-4 sm:p-5 overflow-y-auto space-y-4 sm:space-y-5 flex-shrink-0 animate-in slide-in-from-right-10 duration-150">
             
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
